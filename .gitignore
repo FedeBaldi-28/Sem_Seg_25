@@ -1,0 +1,70 @@
+# ===================
+# Python standard
+# ===================
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+*.pyo
+*.pyd
+*.pkl
+*.log
+
+# ===================
+# IPython / Jupyter
+# ===================
+.ipynb_checkpoints/
+*.out.ipynb
+
+# ===================
+# VS Code
+# ===================
+.vscode/
+
+# ===================
+# OS-specific
+# ===================
+.DS_Store
+Thumbs.db
+
+# ===================
+# Environment / dependency folders
+# ===================
+.env
+.venv
+env/
+venv/
+Pipfile.lock
+poetry.lock
+
+# ===================
+# Checkpoints / training outputs
+# ===================
+checkpoints/
+runs/
+logs/
+output/
+wandb/
+*.pth
+*.pt
+*.model
+*.weights
+
+# ===================
+# Dataset folders
+# ===================
+datasets/GTA5/
+datasets/Cityscapes/
+/input/
+/working/
+/data/
+/tmp/
+
+# ===================
+# Archive files
+# ===================
+*.zip
+*.tar
+*.tar.gz
+*.7z
