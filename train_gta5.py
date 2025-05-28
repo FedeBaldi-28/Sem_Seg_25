@@ -46,7 +46,7 @@ target_transform = transforms.Compose([
 ])
 
 # PERCORSI
-dataset_root = "/content/drive/MyDrive/MLDL2024_project/datasets/GTA5/GTA5"
+dataset_root = "/kaggle/working/punto-3/Seg_sem_25/datasets/GTA5/GTA5"
 
 full_dataset = GTA5(
     root=dataset_root,
@@ -62,7 +62,8 @@ for i in range(5):
 # SPLIT TRAIN / VAL
 train_size = int(0.8 * len(full_dataset))
 val_size = len(full_dataset) - train_size
-train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+generator = torch.Generator().manual_seed(42)  # Puoi usare qualsiasi seed fisso
+train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size], generator=generator)
 
 # DATALOADER
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
@@ -77,8 +78,51 @@ if torch.cuda.device_count() > 1:
 
 model = model.to(DEVICE)
 
+def compute_pixel_frequency(dataloader, num_classes):
+    class_pixel_count = np.zeros(num_classes, dtype=np.int64)
+    image_class_pixels = np.zeros((len(full_dataset), num_classes), dtype=np.int64)
+
+    for i, (_, targets) in enumerate(tqdm(dataloader)):
+        for j in range(targets.size(0)):
+            label = np.array(targets[j])
+            for class_id in range(num_classes):
+                pixel_count = np.sum(label == class_id)
+                class_pixel_count[class_id] += pixel_count
+                image_class_pixels[i * BATCH_SIZE + j, class_id] = pixel_count
+
+    return class_pixel_count, image_class_pixels
+
+def median_frequency_balancing(class_pixel_count, image_class_pixels):
+    frequencies = np.zeros(NUM_CLASSES)
+    for class_id in range(NUM_CLASSES):
+        image_pixels = image_class_pixels[:, class_id]
+        image_pixels = image_pixels[image_pixels > 0]
+        if len(image_pixels) > 0:
+            frequencies[class_id] = np.mean(image_pixels)
+        else:
+            frequencies[class_id] = 0.0
+
+    median_freq = np.median(frequencies[frequencies > 0])
+
+    weights = np.zeros(NUM_CLASSES)
+    for i in range(NUM_CLASSES):
+        if frequencies[i] > 0:
+            weights[i] = median_freq / frequencies[i]
+        else:
+            weights[i] = 0.0
+
+    return weights
+
+print("🔍 Calcolo class weights con MFB su GTA5...")
+class_pixel_count, image_class_pixels = compute_pixel_frequency(train_loader, NUM_CLASSES)
+weights = median_frequency_balancing(class_pixel_count, image_class_pixels)
+print("✅ Class Weights (Median Frequency Balancing):")
+print(weights)
+
+weights_tensor = torch.tensor(weights, dtype=torch.float32).to(DEVICE)
+
 # LOSS, OPTIMIZER, SCALER
-criterion = nn.CrossEntropyLoss(ignore_index=255)
+criterion = nn.CrossEntropyLoss(weight=weights_tensor, ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
 scaler = GradScaler()
 
@@ -90,9 +134,12 @@ max_iter = steps_per_epoch * EPOCHS
 
 # FUNZIONE DI PERDITA DA PAPER
 def Loss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
+    output = output.float()  # 🔧 cast a float32
     main_loss = criterion(output, target)
     auxiliary_loss = 0
     if cx1 is not None and cx2 is not None:
+        cx1 = cx1.float()  # 🔧 cast a float32
+        cx2 = cx2.float()  # 🔧 cast a float32
         auxiliary_loss += criterion(cx1, target)
         auxiliary_loss += criterion(cx2, target)
     joint_loss = main_loss + alpha * auxiliary_loss
@@ -105,6 +152,8 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
     total_pixels = 0
     total_batches = len(train_loader)
     start_time = time.time()
+
+    hist = np.zeros((num_classes, num_classes))  # Per calcolo IoU
 
     for batch_idx, (inputs, targets) in enumerate(tqdm(train_loader)):
         inputs = inputs.to(device)
@@ -141,13 +190,13 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
     avg_loss = running_loss / total_batches
     pixel_acc = total_correct / total_pixels
 
-    # Calcolo mIoU su tutto il train set
-    mIoU, _ = compute_mIoU(model, train_loader, num_classes, device)
     epoch_time = time.time() - start_time
 
-    print(f"[Epoch {epoch}] | [Train] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | mIoU: {mIoU:.2f}% | Time: {epoch_time:.1f}s")
+    print(f"[Epoch {epoch}] | [Train] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | Time: {epoch_time:.1f}s")
 
-    return avg_loss, pixel_acc, mIoU
+    return avg_loss, pixel_acc
+
+
 
 # VALIDAZIONE
 def validate(model, val_loader, criterion, device, num_classes, epoch):
@@ -158,28 +207,37 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
     total_batches = len(val_loader)
     start_time = time.time()
 
+    hist = np.zeros((num_classes, num_classes))
+
     with torch.no_grad():
         for inputs, targets in tqdm(val_loader):
-            cx1 = cx2 = None
+            cx1 = cx2 = None    # Per stare sicuri
             inputs = inputs.to(device)
             targets = targets.to(device).squeeze(1).long()
-            outputs = model(inputs)
 
-            if isinstance(outputs, tuple):
-                outputs = outputs[0]
+            with autocast():  # ✅ Aggiunto qui
+                outputs = model(inputs)
+                if isinstance(outputs, tuple):
+                    outputs = outputs[0]
 
             loss = Loss(outputs, targets, criterion, None, None, alpha=ALPHA)
             val_loss += loss.item()
 
             preds = torch.argmax(outputs, dim=1)
+
             mask = (targets != 255)
             total_correct += ((preds == targets) & mask).sum().item()
             total_pixels += mask.sum().item()
 
+            # Aggiorna confusion matrix per IoU
+            for lp, pp in zip(targets.cpu().numpy(), preds.cpu().numpy()):
+                hist += fast_hist(lp.flatten(), pp.flatten(), num_classes)
+
     avg_loss = val_loss / total_batches
     pixel_acc = total_correct / total_pixels
-
-    mIoU, ious_per_class = compute_mIoU(model, val_loader, num_classes, device)
+    ious = per_class_iou(hist)
+    mIoU = np.nanmean(ious) * 100
+    ious_per_class = ious * 100
     epoch_time = time.time() - start_time
 
     print(f"[Epoch {epoch}] | [Val] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | mIoU: {mIoU:.2f}% | Time: {epoch_time:.1f}s")
@@ -204,10 +262,10 @@ if __name__ == '__main__':
 
         if mean_iou > best_miou:
             best_miou = mean_iou
-            torch.save(model.state_dict(), 'best_model.pth')
+            torch.save(model.state_dict(), 'best_model_3a.pth')
             print(f"Nuova best accuracy: {best_miou:.2f}% → modello salvato!")
 
         print(f"Epoch {epoch} completato! Best accuracy finora: {best_miou:.2f}%\n\n")
 
-    torch.save(model.state_dict(), f'final_model_epoch_{EPOCHS}.pth')
+    torch.save(model.state_dict(), f'final_model_epoch_3a{EPOCHS}.pth')
     print(f"📦 Training finito: modello finale salvato come final_model_epoch_{EPOCHS}.pth")
