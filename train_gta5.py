@@ -12,6 +12,9 @@ from datasets.gta5 import GTA5
 from models.bisenet.build_bisenet import BiSeNet
 from utils import compute_mIoU, fast_hist, per_class_iou, poly_lr_scheduler
 import math
+import random
+from datasets.transforms import JointTransform
+from torch.utils.data import Subset
 
 print("\u2705 Mixed Precision Training attivo con torch.cuda.amp")
 
@@ -48,22 +51,24 @@ target_transform = transforms.Compose([
 # PERCORSI
 dataset_root = "/kaggle/working/punto-3/Seg_sem_25/datasets/GTA5/GTA5"
 
-full_dataset = GTA5(
-    root=dataset_root,
-    transform=input_transform,
-    target_transform=target_transform
-)
+# --- DATASET CONFIGURATI CON JOINT TRANSFORM ---
+train_full = GTA5(root=dataset_root, transform=input_transform, target_transform=target_transform)
+val_full = GTA5(root=dataset_root, transform=input_transform, target_transform=target_transform)
 
+# --- SPLIT INDICI ---
+train_size = int(0.8 * len(train_full))
+val_size = len(train_full) - train_size
+indices = list(range(len(train_full)))
 
-for i in range(5):
-    img, mask = full_dataset[i]
-    print(f"Immagine {i} - shape: {img.size}, Maschera - shape: {mask.size}")
+SEED = 42  # Qualsiasi intero fisso
+random.seed(SEED)
+random.shuffle(indices)
+train_indices = indices[:train_size]
+val_indices = indices[train_size:]
 
-# SPLIT TRAIN / VAL
-train_size = int(0.8 * len(full_dataset))
-val_size = len(full_dataset) - train_size
-generator = torch.Generator().manual_seed(42)  # Puoi usare qualsiasi seed fisso
-train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size], generator=generator)
+# --- CREAZIONE DEI SOTTOSET ---
+train_dataset = Subset(train_full, train_indices)
+val_dataset = Subset(val_full, val_indices)
 
 # DATALOADER
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
@@ -80,15 +85,19 @@ model = model.to(DEVICE)
 
 def compute_pixel_frequency(dataloader, num_classes):
     class_pixel_count = np.zeros(num_classes, dtype=np.int64)
-    image_class_pixels = np.zeros((len(full_dataset), num_classes), dtype=np.int64)
+    num_images = len(dataloader.dataset)
+    image_class_pixels = np.zeros((num_images, num_classes), dtype=np.int64)
+    img_counter = 0
 
-    for i, (_, targets) in enumerate(tqdm(dataloader)):
+    for _, targets in tqdm(dataloader):
         for j in range(targets.size(0)):
             label = np.array(targets[j])
             for class_id in range(num_classes):
                 pixel_count = np.sum(label == class_id)
                 class_pixel_count[class_id] += pixel_count
-                image_class_pixels[i * BATCH_SIZE + j, class_id] = pixel_count
+                image_class_pixels[img_counter, class_id] = pixel_count
+            img_counter += 1
+
 
     return class_pixel_count, image_class_pixels
 
@@ -152,8 +161,6 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
     total_pixels = 0
     total_batches = len(train_loader)
     start_time = time.time()
-
-    hist = np.zeros((num_classes, num_classes))  # Per calcolo IoU
 
     for batch_idx, (inputs, targets) in enumerate(tqdm(train_loader)):
         inputs = inputs.to(device)
@@ -268,4 +275,4 @@ if __name__ == '__main__':
         print(f"Epoch {epoch} completato! Best accuracy finora: {best_miou:.2f}%\n\n")
 
     torch.save(model.state_dict(), f'final_model_epoch_3a{EPOCHS}.pth')
-    print(f"📦 Training finito: modello finale salvato come final_model_epoch_{EPOCHS}.pth")
+    print(f"📦 Training finito: modello finale salvato come final_model_epoch_3a{EPOCHS}.pth")

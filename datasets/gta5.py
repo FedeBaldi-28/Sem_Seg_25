@@ -4,17 +4,19 @@ from torch.utils.data import Dataset
 import torchvision.transforms as T
 
 class GTA5(Dataset):
-    def __init__(self, root, transform=None, target_transform=None):
+    def __init__(self, root, transform=None, target_transform=None, joint_transform=None):
         """
         Args:
             root (str): cartella principale con sottocartelle 'images' e 'converted'
             transform (callable): trasformazione da applicare all'immagine
             target_transform (callable): trasformazione da applicare alla maschera
+            joint_transform (callable): trasformazione congiunta immagine+maschera
         """
         self.images_dir = os.path.join(root, 'images')
         self.converted_masks_dir = os.path.join(root, 'converted')
         self.transform = transform
         self.target_transform = target_transform
+        self.joint_transform = joint_transform
 
         # Lista dei nomi file immagine .png (es. 00001.png)
         self.images = sorted([f for f in os.listdir(self.images_dir) if f.endswith('.png')])
@@ -36,11 +38,14 @@ class GTA5(Dataset):
         # Carica maschera già convertita (come immagine a singolo canale)
         label_mask = Image.open(self.mask_paths[idx])
 
-        # Applica trasformazioni
-        if self.transform:
-            img = self.transform(img)
-        if self.target_transform:
-            label_mask = self.target_transform(label_mask)
+        # 👇 Prima applica joint_transform (se definita)
+        if self.joint_transform is not None:
+            img, label_mask = self.joint_transform(img, label_mask)
+        else:
+            if self.transform:
+                img = self.transform(img)
+            if self.target_transform:
+                label_mask = self.target_transform(label_mask)
 
         # Maschera → tensor long, rimuovo canale (C=1)
         label_mask = T.PILToTensor()(label_mask).long().squeeze(0)
