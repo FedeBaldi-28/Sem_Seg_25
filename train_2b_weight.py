@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from build_bisenet import BiSeNet
+from models.bisenet.build_bisenet import BiSeNet
 from datasets.cityscapes import Cityscapes
 import time
 from PIL import Image
@@ -13,6 +13,7 @@ import math
 from torch.optim.lr_scheduler import LambdaLR
 from utils import fast_hist, per_class_iou
 from torch import amp
+import numpy as np
 
 
 # CONFIGURAZIONE
@@ -45,14 +46,14 @@ target_transform = transforms.Compose([
 
 # DATASET
 train_dataset = Cityscapes(
-    root='/kaggle/working/prova1/MLDL2024_project/datasets/Cityscapes/Cityscapes/Cityspaces',
+    root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='train',
     transform=input_transform,
     target_transform=target_transform
 )
 
 val_dataset = Cityscapes(
-    root='/kaggle/working/prova1/MLDL2024_project/datasets/Cityscapes/Cityscapes/Cityspaces',
+    root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='val',
     transform=input_transform,
     target_transform=target_transform
@@ -150,6 +151,7 @@ def Loss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
 # FUNZIONE DI TRAINING
 def train(model, train_loader, optimizer, criterion, device, num_classes, epoch, scheduler):
   model.train()
+  running_loss = 0.0
   total_correct = 0    
   total_pixels = 0
   total_batches = len(train_loader)
@@ -265,4 +267,3 @@ if __name__ == '__main__':
 
   torch.save(model.state_dict(), f'final_model_epoch_2b_weight{EPOCHS}.pth')
   print(f"📦 Training finito: modello finale salvato come final_model_epoch_2b_weight{EPOCHS}.pth")
-
