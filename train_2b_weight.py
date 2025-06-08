@@ -156,8 +156,8 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch,
   start_time = time.time()
 
   for inputs, targets in tqdm(train_loader):
-        inputs = inputs.to(device)
-        targets = targets.to(device).squeeze(1).long()
+    inputs = inputs.to(device)
+    targets = targets.to(device).squeeze(1).long()
     
     optimizer.zero_grad()   
 
