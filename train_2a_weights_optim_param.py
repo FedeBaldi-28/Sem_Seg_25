@@ -119,7 +119,7 @@ model = model.to(DEVICE)
 
 # LOSS & OPTIMIZER
 #class_weights = compute_class_weights(train_loader, NUM_CLASSES)
-criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=255)
+criterion = nn.CrossEntropyLoss(weight=weights_tensor, ignore_index=255)
 optimizer = optim.SGD(model.optim_parameters(lr=LEARNING_RATE), lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
 scaler = GradScaler()  # Mixed Precision
 
