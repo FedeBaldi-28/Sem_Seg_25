@@ -1,3 +1,4 @@
+%%writefile /kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/train.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,13 +13,14 @@ from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 from utils import fast_hist, per_class_iou
 import math
+from torch import amp
 
 print("\u2705 Mixed Precision Training attivo con torch.cuda.amp")
 
 # CONFIGURAZIONE
 NUM_CLASSES = 19
 BATCH_SIZE = 4
-EPOCHS = 1
+EPOCHS = 50
 LEARNING_RATE = 0.0001
 IMG_SIZE = (512, 1024)
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -44,21 +46,24 @@ target_transform = transforms.Compose([
 
 # DATASET
 train_dataset = Cityscapes(
-    root='/content/drive/MyDrive/MLDL2024_project/datasets/Cityscapes/Cityscapes/Cityspaces',
+    root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='train',
     transform=input_transform,
     target_transform=target_transform
 )
 
 val_dataset = Cityscapes(
-    root='/content/drive/MyDrive/MLDL2024_project/datasets/Cityscapes/Cityscapes/Cityspaces',
+    root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='val',
     transform=input_transform,
     target_transform=target_transform
 )
 
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
+                          num_workers=4, pin_memory=True, persistent_workers=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False,
+                        num_workers=4, pin_memory=True, persistent_workers=True)
+
 
 # FUNZIONE PER CALCOLARE I PESI
 
@@ -109,7 +114,7 @@ print(weights)
 weights_tensor = torch.tensor(weights, dtype=torch.float32).to(DEVICE)
 
 # MODELLO
-model = get_deeplab_v2(num_classes=NUM_CLASSES, pretrain=True, pretrain_model_path='/content/drive/MyDrive/MLDL2024_project/deeplab_resnet_pretrained_imagenet.pth')
+model = get_deeplab_v2(num_classes=NUM_CLASSES, pretrain=True, pretrain_model_path='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/deeplab_resnet_pretrained_imagenet.pth')
 
 if torch.cuda.device_count() > 1:
     print(f"🚀 Usando {torch.cuda.device_count()} GPU!")
@@ -120,8 +125,8 @@ model = model.to(DEVICE)
 # LOSS & OPTIMIZER
 #class_weights = compute_class_weights(train_loader, NUM_CLASSES)
 criterion = nn.CrossEntropyLoss(weight=weights_tensor, ignore_index=255)
-optimizer = optim.SGD(model.optim_parameters(lr=LEARNING_RATE), lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
-scaler = GradScaler()  # Mixed Precision
+optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
+scaler = amp.GradScaler('cuda')
 
 # TRAINING
 def train(model, train_loader, optimizer, criterion, device, num_classes, epoch):
@@ -138,7 +143,7 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
 
         optimizer.zero_grad()
 
-        with autocast():
+        with amp.autocast('cuda'):
             outputs = model(inputs)
             if isinstance(outputs, tuple):
                 outputs = outputs[0]
@@ -182,7 +187,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
             inputs = inputs.to(device)
             targets = targets.to(device).squeeze(1).long()
             
-            with autocast():  # ✅ Aggiunto qui
+            with amp.autocast('cuda'):  # ✅ Aggiunto qui
                 outputs = model(inputs)
                 if isinstance(outputs, tuple):
                     outputs = outputs[0]
