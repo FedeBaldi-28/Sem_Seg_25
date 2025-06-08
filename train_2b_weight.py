@@ -12,6 +12,7 @@ from torch.cuda.amp import autocast, GradScaler
 import math
 from torch.optim.lr_scheduler import LambdaLR
 from utils import fast_hist, per_class_iou
+from torch import amp
 
 
 # CONFIGURAZIONE
@@ -118,7 +119,7 @@ model = model.to(DEVICE)
 # LOSS & OPTIMIZER
 criterion = nn.CrossEntropyLoss(weight=weights_tensor, ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=INIT_LR, momentum=0.9, weight_decay=1e-4)
-scaler = GradScaler() 
+scaler = amp.GradScaler('cuda')
 
 # PARAMTETRI POLY LR
 power = 0.9
@@ -160,7 +161,7 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch,
     
     optimizer.zero_grad()   
 
-    with autocast():
+    with amp.autocast('cuda'):
       outputs = model(inputs)
       if isinstance(outputs, tuple):
         cx1 = outputs[1]
@@ -208,7 +209,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
       inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
       targets = targets.squeeze(1).long()  # [B, 1, H, W] → [B, H, W]
 
-      with autocast():  # ✅ Aggiunto qui
+      with amp.autocast('cuda'):  # ✅ Aggiunto qui
           outputs = model(inputs)
           if isinstance(outputs, tuple):
               outputs = outputs[0]
