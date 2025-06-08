@@ -44,14 +44,14 @@ target_transform = transforms.Compose([
 
 # DATASET
 train_dataset = Cityscapes(
-    root='path/to/Cityscapes',
+    root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='train',
     transform=input_transform,
     target_transform=target_transform
 )
 
 val_dataset = Cityscapes(
-    root='path/to/Cityscapes',
+    root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='val',
     transform=input_transform,
     target_transform=target_transform
