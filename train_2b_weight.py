@@ -216,7 +216,8 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
           if isinstance(outputs, tuple):
               outputs = outputs[0]
 
-      loss = Loss(outputs,targets,criterion,None,None,alpha=ALPHA)
+          loss = Loss(outputs,targets,criterion,None,None,alpha=ALPHA)
+      
       val_loss += loss.item()
 
       preds = torch.argmax(outputs, dim=1)
