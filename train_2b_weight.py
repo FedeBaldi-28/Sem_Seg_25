@@ -133,6 +133,7 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch,
         targets = targets.to(device).squeeze(1).long()
 
         poly_lr_scheduler(optimizer, INIT_LR, global_step, max_iter=max_iter, power=power)
+        
         global_step += 1
 
         optimizer.zero_grad()
@@ -157,7 +158,8 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch,
 
     avg_loss = running_loss / total_batches
     pixel_acc = total_correct / total_pixels
-    print(f"[Epoch {epoch}] | [Train] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | Time: {time.time() - start_time:.1f}s")
+    current_lr = optimizer.param_groups[0]['lr']
+    print(f"[Epoch {epoch}] | [Train] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | Time: {time.time() - start_time:.1f}s | Learning rate finale epoca: {current_lr:.6f}")
     return avg_loss, pixel_acc, global_step
 
 # VALIDAZIONE
@@ -178,7 +180,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
                 outputs = model(inputs)
                 if isinstance(outputs, tuple):
                     outputs = outputs[0]
-                loss = Loss(outputs, targets,cx1, cx2, criterion)
+                loss = Loss(outputs, targets, criterion, cx1, cx2, alpha=ALPHA)
             val_loss += loss.item()
 
             preds = torch.argmax(outputs, dim=1)
