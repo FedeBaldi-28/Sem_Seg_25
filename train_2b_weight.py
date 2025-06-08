@@ -1,3 +1,4 @@
+%%writefile /kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/train.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -8,22 +9,19 @@ import time
 from PIL import Image
 from tqdm import tqdm
 from torchvision import transforms
-from torch.cuda.amp import autocast, GradScaler
+from torch.cuda import amp
 import math
-from torch.optim.lr_scheduler import LambdaLR
-from utils import fast_hist, per_class_iou
-from torch import amp
+from utils import fast_hist, per_class_iou, poly_lr_scheduler
 import numpy as np
-
 
 # CONFIGURAZIONE
 CONTEXT_PATH = 'resnet18'
-ALPHA = 1  # Same as the paper
+ALPHA = 1
 NUM_CLASSES = 19
 BATCH_SIZE = 16
 EPOCHS = 50
 INIT_LR = 2.5e-2
-IMG_SIZE = (512, 1024)  # (H, W)
+IMG_SIZE = (512, 1024)
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 CLASS_NAMES = [
@@ -46,26 +44,26 @@ target_transform = transforms.Compose([
 
 # DATASET
 train_dataset = Cityscapes(
-    root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
+    root='path/to/Cityscapes',
     split='train',
     transform=input_transform,
     target_transform=target_transform
 )
 
 val_dataset = Cityscapes(
-    root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
+    root='path/to/Cityscapes',
     split='val',
     transform=input_transform,
     target_transform=target_transform
 )
 
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
+# CALCOLO PESI CLASSI
 def compute_pixel_frequency(dataloader, num_classes):
     class_pixel_count = np.zeros(num_classes, dtype=np.int64)
-    num_images = len(dataloader.dataset)
-    image_class_pixels = np.zeros((num_images, num_classes), dtype=np.int64)
+    image_class_pixels = np.zeros((len(dataloader.dataset), num_classes), dtype=np.int64)
     img_counter = 0
 
     for _, targets in tqdm(dataloader):
@@ -84,187 +82,140 @@ def median_frequency_balancing(class_pixel_count, image_class_pixels):
     for class_id in range(NUM_CLASSES):
         image_pixels = image_class_pixels[:, class_id]
         image_pixels = image_pixels[image_pixels > 0]
-        if len(image_pixels) > 0:
-            frequencies[class_id] = np.mean(image_pixels)
-        else:
-            frequencies[class_id] = 0.0
+        frequencies[class_id] = np.mean(image_pixels) if len(image_pixels) > 0 else 0.0
 
     median_freq = np.median(frequencies[frequencies > 0])
-
-    weights = np.zeros(NUM_CLASSES)
-    for i in range(NUM_CLASSES):
-        if frequencies[i] > 0:
-            weights[i] = median_freq / frequencies[i]
-        else:
-            weights[i] = 0.0
-
+    weights = np.array([median_freq / f if f > 0 else 0.0 for f in frequencies])
     return weights
 
-print("🔍 Calcolo class weights con MFB su GTA5...")
+print("Calcolo pesi classi...")
 class_pixel_count, image_class_pixels = compute_pixel_frequency(train_loader, NUM_CLASSES)
 weights = median_frequency_balancing(class_pixel_count, image_class_pixels)
-print("✅ Class Weights (Median Frequency Balancing):")
-print(weights)
-
 weights_tensor = torch.tensor(weights, dtype=torch.float32).to(DEVICE)
 
 # MODELLO
 model = BiSeNet(num_classes=NUM_CLASSES, context_path=CONTEXT_PATH)
-
 if torch.cuda.device_count() > 1:
-    print(f"🚀 Usando {torch.cuda.device_count()} GPU!")
     model = nn.DataParallel(model)
-
 model = model.to(DEVICE)
 
-# LOSS & OPTIMIZER
+# LOSS E OTTIMIZZATORE
 criterion = nn.CrossEntropyLoss(weight=weights_tensor, ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=INIT_LR, momentum=0.9, weight_decay=1e-4)
-scaler = amp.GradScaler('cuda')
+scaler = amp.GradScaler()
 
-# PARAMTETRI POLY LR
+# POLY LR CONFIG
 power = 0.9
-N = len(train_dataset)                         
-steps_per_epoch = math.ceil(N / BATCH_SIZE)    
-max_iter = steps_per_epoch * EPOCHS            
+steps_per_epoch = math.ceil(len(train_loader.dataset) / BATCH_SIZE)
+max_iter = steps_per_epoch * EPOCHS
 
-# POLY LR
-def poly_scheduler(iteration: int) -> float:
-  return (1.0 - iteration / max_iter) ** power
-
-scheduler = LambdaLR(optimizer, lr_lambda=poly_scheduler)
-
-# FUNZIONE DI PERDITA
+# LOSS PERSONALIZZATA
 def Loss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
-  
-  main_loss = criterion(output,target)
-  auxiliary_loss = 0 
-  if cx1 is not None and cx2 is not None:
-    auxiliary_loss += criterion(cx1,target)
-    auxiliary_loss += criterion(cx2,target)
+    main_loss = criterion(output, target)
+    aux_loss = 0
+    if cx1 is not None and cx2 is not None:
+        aux_loss += criterion(cx1, target)
+        aux_loss += criterion(cx2, target)
+    return main_loss + alpha * aux_loss
 
-  joint_loss = main_loss + alpha * auxiliary_loss
+# TRAINING
 
-  return joint_loss
+def train(model, train_loader, optimizer, criterion, device, num_classes, epoch, global_step):
+    model.train()
+    running_loss = 0.0
+    total_correct = 0
+    total_pixels = 0
+    total_batches = len(train_loader)
+    start_time = time.time()
 
+    for inputs, targets in tqdm(train_loader):
+        inputs = inputs.to(device)
+        targets = targets.to(device).squeeze(1).long()
 
-# FUNZIONE DI TRAINING
-def train(model, train_loader, optimizer, criterion, device, num_classes, epoch, scheduler):
-  model.train()
-  running_loss = 0.0
-  total_correct = 0    
-  total_pixels = 0
-  total_batches = len(train_loader)
-  start_time = time.time()
+        poly_lr_scheduler(optimizer, INIT_LR, global_step, max_iter=max_iter, power=power)
+        global_step += 1
 
-  for inputs, targets in tqdm(train_loader):
-    inputs = inputs.to(device)
-    targets = targets.to(device).squeeze(1).long()
-    
-    optimizer.zero_grad()   
+        optimizer.zero_grad()
+        with amp.autocast():
+            outputs = model(inputs)
+            cx1, cx2 = None, None
+            if isinstance(outputs, tuple):
+                cx1, cx2 = outputs[1], outputs[2]
+                outputs = outputs[0]
+            loss = Loss(outputs, targets, criterion, cx1, cx2, alpha=ALPHA)
 
-    with amp.autocast('cuda'):
-      outputs = model(inputs)
-      if isinstance(outputs, tuple):
-        cx1 = outputs[1]
-        cx2 = outputs[2]
-        outputs = outputs[0]
-      loss = Loss(outputs,targets,criterion,cx1,cx2,alpha=ALPHA)
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
-    scaler.scale(loss).backward()
-    scaler.step(optimizer)
-    scaler.update()
-    scheduler.step()
+        running_loss += loss.item()
+        with torch.no_grad():
+            preds = torch.argmax(outputs, dim=1)
+            mask = (targets != 255)
+            total_correct += ((preds == targets) & mask).sum().item()
+            total_pixels += mask.sum().item()
 
-    running_loss += loss.item()
+    avg_loss = running_loss / total_batches
+    pixel_acc = total_correct / total_pixels
+    print(f"[Epoch {epoch}] | [Train] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | Time: {time.time() - start_time:.1f}s")
+    return avg_loss, pixel_acc, global_step
+
+# VALIDAZIONE
+def validate(model, val_loader, criterion, device, num_classes, epoch):
+    model.eval()
+    val_loss = 0.0
+    total_correct = 0
+    total_pixels = 0
+    total_batches = len(val_loader)
+    start_time = time.time()
+    hist = np.zeros((num_classes, num_classes))
 
     with torch.no_grad():
-        preds = torch.argmax(outputs, dim=1)
-        mask = (targets != 255)
-        total_correct += ((preds == targets) & mask).sum().item()
-        total_pixels += mask.sum().item()
-    
-  avg_loss = running_loss / total_batches
-  pixel_acc = total_correct / total_pixels
+        for inputs, targets in tqdm(val_loader):
+            cx1 = cx2 = None   # Per sicurezza, inizializzo a None
+            inputs, targets = inputs.to(device), targets.to(device).squeeze(1).long()
+            with amp.autocast():
+                outputs = model(inputs)
+                if isinstance(outputs, tuple):
+                    outputs = outputs[0]
+                loss = Loss(outputs, targets,cx1, cx2, criterion)
+            val_loss += loss.item()
 
-  epoch_time = time.time() - start_time
+            preds = torch.argmax(outputs, dim=1)
+            
+            mask = (targets != 255)
+            total_correct += ((preds == targets) & mask).sum().item()
+            total_pixels += mask.sum().item()
 
-  print(f"[Epoch {epoch}] | [Train] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | Time: {epoch_time:.1f}s")
+            for lt, lp in zip(targets.cpu().numpy(), preds.cpu().numpy()):
+                hist += fast_hist(lt.flatten(), lp.flatten(), num_classes)
 
-  return avg_loss, pixel_acc   
+    avg_loss = val_loss / total_batches
+    pixel_acc = total_correct / total_pixels
+    ious = per_class_iou(hist)
+    mIoU = np.nanmean(ious) * 100
+    print(f"[Epoch {epoch}] | [Val] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | mIoU: {mIoU:.2f}% | Time: {time.time() - start_time:.1f}s")
+    for idx, iou_cls in enumerate(ious * 100):
+        print(f"  {CLASS_NAMES[idx]}: {iou_cls:.2f}%")
+    return pixel_acc, mIoU
 
-
-# FUNZIONE DI VALIDAZIONE
-def validate(model, val_loader, criterion, device, num_classes, epoch):
-  model.eval()
-  val_loss = 0.0
-  total_correct = 0
-  total_pixels = 0
-  total_batches = len(val_loader)
-  start_time = time.time()
-
-  hist = np.zeros((num_classes, num_classes))
-
-  with torch.no_grad():
-    for batch_idx, (inputs, targets) in enumerate(tqdm(val_loader)):
-      cx1 = cx2 = None    # Per stare sicuri
-      inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
-      targets = targets.squeeze(1).long()  # [B, 1, H, W] → [B, H, W]
-
-      with amp.autocast('cuda'):  # ✅ Aggiunto qui
-          outputs = model(inputs)
-          if isinstance(outputs, tuple):
-              outputs = outputs[0]
-
-          loss = Loss(outputs,targets,criterion,None,None,alpha=ALPHA)
-      
-      val_loss += loss.item()
-
-      preds = torch.argmax(outputs, dim=1)
-
-      mask = (targets != 255)
-      total_correct += ((preds == targets) & mask).sum().item()
-      total_pixels += mask.sum().item()
-
-      # Aggiorna confusion matrix per IoU
-      for lp, pp in zip(targets.cpu().numpy(), preds.cpu().numpy()):
-          hist += fast_hist(lp.flatten(), pp.flatten(), num_classes)
-
-  avg_loss = val_loss / total_batches
-  avg_pixel_acc = total_pixel_acc / total_batches
-
-  ious = per_class_iou(hist)
-  mIoU = np.nanmean(ious) * 100
-  ious_per_class = ious * 100
-
-  epoch_time = time.time() - start_time
-
-  print(f"[Epoch {epoch}] | [Val] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | mIoU: {mIoU:.2f}% | Time: {epoch_time:.1f}s")
-
-  print("IoU per classe (val):")
-  for idx, iou_cls in enumerate(ious_per_class):
-      print(f"  {CLASS_NAMES[idx]}: {iou_cls:.2f}%")
-
-  return pixel_acc, mIoU
-  
-# CICLO DI TRAINING
+# MAIN
 if __name__ == '__main__':
-  print("avvio training")
-  best_miou = 0.0
+    best_miou = 0.0
+    global_step = 0
+    for epoch in range(1, EPOCHS + 1):
+        print(f"Epoch {epoch}/{EPOCHS}")
+        _, _, global_step = train(model, train_loader, optimizer, criterion, DEVICE, NUM_CLASSES, epoch, global_step)
+        pixel_acc, mean_iou = validate(model, val_loader, criterion, DEVICE, NUM_CLASSES, epoch)
 
-  for epoch in range(1, EPOCHS + 1):
-    print(f"epoch{epoch}/{EPOCHS}")
-    train(model, train_loader, optimizer, criterion, DEVICE, NUM_CLASSES, epoch, scheduler)
-    pixel_acc, mean_iou = validate(model, val_loader, criterion, DEVICE, NUM_CLASSES, epoch)
+        torch.cuda.empty_cache()
 
-    torch.cuda.empty_cache()
+        if mean_iou > best_miou:
+            best_miou = mean_iou
+            torch.save(model.state_dict(), 'best_model_2b_weight.pth')
+            print(f"Nuova best accuracy: {best_miou:.2f}% → modello salvato!")
 
-    if mean_iou > best_miou:
-        best_miou = mean_iou
-        torch.save(model.state_dict(), 'best_model_2b_weight.pth')
-        print(f"Nuova best accuracy: {best_miou:.2f}% → modello salvato!")
-    
-    print(f"Epoch {epoch} completato! Best accuracy finora: {best_miou:.2f}%\n\n")
+        print(f"Epoch {epoch} completato! Best accuracy finora: {best_miou:.2f}%\n")
 
-  torch.save(model.state_dict(), f'final_model_epoch_2b_weight{EPOCHS}.pth')
-  print(f"📦 Training finito: modello finale salvato come final_model_epoch_2b_weight{EPOCHS}.pth")
+    torch.save(model.state_dict(), f'final_model_epoch_2b_weight{EPOCHS}.pth')
+    print(f"📦 Training finito: modello finale salvato come final_model_epoch_2b_weight{EPOCHS}.pth")
