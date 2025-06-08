@@ -18,7 +18,7 @@ print("\u2705 Mixed Precision Training attivo con torch.cuda.amp")
 # CONFIGURAZIONE
 NUM_CLASSES = 19
 BATCH_SIZE = 4
-EPOCHS = 1
+EPOCHS = 50
 LEARNING_RATE = 0.0001
 IMG_SIZE = (512, 1024)
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -57,8 +57,8 @@ val_dataset = Cityscapes(
     target_transform=target_transform
 )
 
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
 
 # MODELLO
 model = get_deeplab_v2(num_classes=NUM_CLASSES, pretrain=True, pretrain_model_path='/content/drive/MyDrive/MLDL2024_project/deeplab_resnet_pretrained_imagenet.pth')
@@ -71,8 +71,8 @@ model = model.to(DEVICE)
 
 # LOSS & OPTIMIZER
 criterion = nn.CrossEntropyLoss(ignore_index=255)
-optimizer = optim.SGD(model.optim_parameters(lr=LEARNING_RATE), lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
-scaler = GradScaler()  # Mixed Precision
+optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
+scaler = amp.GradScaler('cuda')
 
 # TRAINING
 def train(model, train_loader, optimizer, criterion, device, num_classes, epoch):
@@ -89,7 +89,7 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
 
         optimizer.zero_grad()
 
-        with autocast():
+        with amp.autocast('cuda'):
             outputs = model(inputs)
             if isinstance(outputs, tuple):
                 outputs = outputs[0]
@@ -133,7 +133,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
             inputs = inputs.to(device)
             targets = targets.to(device).squeeze(1).long()
             
-            with autocast():  # ✅ Aggiunto qui
+            with amp.autocast('cuda'):  # ✅ Aggiunto qui
                 outputs = model(inputs)
                 if isinstance(outputs, tuple):
                     outputs = outputs[0]
