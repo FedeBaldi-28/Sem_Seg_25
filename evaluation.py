@@ -28,7 +28,7 @@ def load_model(model_name, model_path):
         model = get_deeplab_v2(num_classes=NUM_CLASSES, pretrain=False)
     elif model_name == "bisenet":
         from model.bisenet import BiSeNet
-        model = BiSeNet(num_classes=NUM_CLASSES)
+        model = BiSeNet(num_classes=NUM_CLASSES, context_path='resnet18')
     else:
         raise ValueError(f"Modello '{model_name}' non supportato.")
     
