@@ -13,7 +13,7 @@ import numpy as np
 from utils import fast_hist, per_class_iou
 import math
 
-# CONFIGURAZIONE
+#################### CONFIGURAZIONE ####################
 NUM_CLASSES = 19
 BATCH_SIZE = 4
 EPOCHS = 50
@@ -21,7 +21,6 @@ LEARNING_RATE = 0.0001
 IMG_SIZE = (512, 1024)
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-# NOMI DELLE CLASSI CITYSCAPES
 CLASS_NAMES = [
     'road', 'sidewalk', 'building', 'wall', 'fence', 'pole',
     'traffic light', 'traffic sign', 'vegetation', 'terrain',
@@ -29,7 +28,7 @@ CLASS_NAMES = [
     'train', 'motorcycle', 'bicycle'
 ]
 
-# TRANSFORM
+#################### TRANSFORM ####################
 input_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE),
     transforms.ToTensor(),
@@ -40,7 +39,7 @@ target_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE, interpolation=Image.NEAREST),
 ])
 
-# DATASET
+#################### DATASET ####################
 train_dataset = Cityscapes(
     root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='train',
@@ -58,7 +57,7 @@ val_dataset = Cityscapes(
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
 
-# MODELLO
+#################### MODEL ####################
 model = get_deeplab_v2(num_classes=NUM_CLASSES, pretrain=True, pretrain_model_path='/content/drive/MyDrive/MLDL2024_project/deeplab_resnet_pretrained_imagenet.pth')
 
 if torch.cuda.device_count() > 1:
@@ -67,12 +66,12 @@ if torch.cuda.device_count() > 1:
 
 model = model.to(DEVICE)
 
-# LOSS & OPTIMIZER
+#################### LOSS & OPTIMIZER ####################
 criterion = nn.CrossEntropyLoss(ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
 scaler = amp.GradScaler('cuda')
 
-# TRAINING
+#################### TRAINING ####################
 def train(model, train_loader, optimizer, criterion, device, num_classes, epoch):
     model.train()
     running_loss = 0.0
@@ -115,7 +114,7 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
     return avg_loss, pixel_acc
 
 
-# VALIDAZIONE
+#################### VALIDATION ####################
 def validate(model, val_loader, criterion, device, num_classes, epoch):
     model.eval()
     val_loss = 0.0
@@ -166,7 +165,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
     return pixel_acc, mIoU
 
 
-# MAIN LOOP
+#################### MAIN ####################
 if __name__ == '__main__':
     print("Avvio training")
     best_miou = 0.0
