@@ -13,8 +13,6 @@ import numpy as np
 from utils import fast_hist, per_class_iou
 import math
 
-print("\u2705 Mixed Precision Training attivo con torch.cuda.amp")
-
 # CONFIGURAZIONE
 NUM_CLASSES = 19
 BATCH_SIZE = 4
