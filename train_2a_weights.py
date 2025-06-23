@@ -1,4 +1,3 @@
-%%writefile /kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/train.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -14,8 +13,6 @@ import numpy as np
 from utils import fast_hist, per_class_iou
 import math
 from torch import amp
-
-print("\u2705 Mixed Precision Training attivo con torch.cuda.amp")
 
 # CONFIGURAZIONE
 NUM_CLASSES = 19
@@ -59,14 +56,11 @@ val_dataset = Cityscapes(
     target_transform=target_transform
 )
 
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
-                          num_workers=4, pin_memory=True, persistent_workers=True)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False,
-                        num_workers=4, pin_memory=True, persistent_workers=True)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
 
 
-# FUNZIONE PER CALCOLARE I PESI
-
+# COMPUTE WEIGHTS
 def compute_pixel_frequency(dataloader, num_classes):
     class_pixel_count = np.zeros(num_classes, dtype=np.int64)
     num_images = len(dataloader.dataset)
@@ -105,13 +99,13 @@ def median_frequency_balancing(class_pixel_count, image_class_pixels):
 
     return weights
 
-print("🔍 Calcolo class weights con MFB su GTA5...")
 class_pixel_count, image_class_pixels = compute_pixel_frequency(train_loader, NUM_CLASSES)
 weights = median_frequency_balancing(class_pixel_count, image_class_pixels)
-print("✅ Class Weights (Median Frequency Balancing):")
+print("Class Weights (Median Frequency Balancing):")
 print(weights)
 
-weights_tensor = torch.tensor(weights, dtype=torch.float32).to(DEVICE)
+normalized_weights = weights / weights.sum() * len(weights)
+weights_tensor = torch.tensor(normalized_weights, dtype=torch.float32).to(DEVICE)
 
 # MODELLO
 model = get_deeplab_v2(num_classes=NUM_CLASSES, pretrain=True, pretrain_model_path='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/deeplab_resnet_pretrained_imagenet.pth')
@@ -123,7 +117,6 @@ if torch.cuda.device_count() > 1:
 model = model.to(DEVICE)
 
 # LOSS & OPTIMIZER
-#class_weights = compute_class_weights(train_loader, NUM_CLASSES)
 criterion = nn.CrossEntropyLoss(weight=weights_tensor, ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
 scaler = amp.GradScaler('cuda')
@@ -187,7 +180,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
             inputs = inputs.to(device)
             targets = targets.to(device).squeeze(1).long()
             
-            with amp.autocast('cuda'):  # ✅ Aggiunto qui
+            with amp.autocast('cuda'):
                 outputs = model(inputs)
                 if isinstance(outputs, tuple):
                     outputs = outputs[0]
@@ -201,7 +194,6 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
             total_correct += ((preds == targets) & mask).sum().item()
             total_pixels += mask.sum().item()
 
-            # Aggiorna confusion matrix per IoU
             for lp, pp in zip(targets.cpu().numpy(), preds.cpu().numpy()):
                 hist += fast_hist(lp.flatten(), pp.flatten(), num_classes)
 
