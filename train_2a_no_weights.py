@@ -13,6 +13,7 @@ import numpy as np
 from utils import fast_hist, per_class_iou
 import math
 
+
 #################### CONFIGURAZIONE ####################
 NUM_CLASSES = 19
 BATCH_SIZE = 4
@@ -28,6 +29,7 @@ CLASS_NAMES = [
     'train', 'motorcycle', 'bicycle'
 ]
 
+
 #################### TRANSFORM ####################
 input_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE),
@@ -38,6 +40,7 @@ input_transform = transforms.Compose([
 target_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE, interpolation=Image.NEAREST),
 ])
+
 
 #################### DATASET ####################
 train_dataset = Cityscapes(
@@ -57,19 +60,22 @@ val_dataset = Cityscapes(
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
 
+
 #################### MODEL ####################
 model = get_deeplab_v2(num_classes=NUM_CLASSES, pretrain=True, pretrain_model_path='/content/drive/MyDrive/MLDL2024_project/deeplab_resnet_pretrained_imagenet.pth')
 
 if torch.cuda.device_count() > 1:
-    print(f"🚀 Usando {torch.cuda.device_count()} GPU!")
+    print(f"Usando {torch.cuda.device_count()} GPU!")
     model = nn.DataParallel(model)
 
 model = model.to(DEVICE)
+
 
 #################### LOSS & OPTIMIZER ####################
 criterion = nn.CrossEntropyLoss(ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
 scaler = amp.GradScaler('cuda')
+
 
 #################### TRAINING ####################
 def train(model, train_loader, optimizer, criterion, device, num_classes, epoch):
