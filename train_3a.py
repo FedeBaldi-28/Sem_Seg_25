@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from torchvision import transforms
 import time
 from PIL import Image
@@ -10,14 +10,17 @@ from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 from datasets.gta5 import GTA5
 from models.bisenet.build_bisenet import BiSeNet
-from utils import compute_mIoU, fast_hist, per_class_iou, poly_lr_scheduler
+from utils import fast_hist, per_class_iou, poly_lr_scheduler
 import math
 import random
 from datasets.transforms import JointTransform
 from torch.utils.data import Subset
 from torch.cuda import amp
 
-# CONFIGURAZIONE
+
+#################### CONFIGURAZIONE ####################
+CONTEXT_PATH = 'resnet18'
+ALPHA = 1
 NUM_CLASSES = 19
 BATCH_SIZE = 16
 EPOCHS = 50
@@ -25,10 +28,6 @@ LEARNING_RATE = 2.5e-2
 IMG_SIZE = (720, 1280)
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-# alpha per funzione loss
-ALPHA = 1
-
-# NOMI DELLE CLASSI
 CLASS_NAMES = [
     'road', 'sidewalk', 'building', 'wall', 'fence', 'pole',
     'traffic light', 'traffic sign', 'vegetation', 'terrain',
@@ -36,7 +35,8 @@ CLASS_NAMES = [
     'train', 'motorcycle', 'bicycle'
 ]
 
-# TRANSFORM
+
+#################### TRANSFORM ####################
 input_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE),
     transforms.ToTensor(),
@@ -47,6 +47,8 @@ target_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE, interpolation=Image.NEAREST),
 ])
 
+
+#################### DATASET ####################
 dataset_root = "/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/GTA5/GTA5"
 
 train_full = GTA5(root=dataset_root, transform=input_transform, target_transform=target_transform)
@@ -68,27 +70,31 @@ val_dataset = Subset(val_full, val_indices)
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
 
-# MODELLO
-model = BiSeNet(num_classes=NUM_CLASSES, context_path='resnet18').to(DEVICE)
+
+#################### MODEL ####################
+model = BiSeNet(num_classes=NUM_CLASSES, context_path=CONTEXT_PATH).to(DEVICE)
 
 if torch.cuda.device_count() > 1:
-    print(f"🚀 Usando {torch.cuda.device_count()} GPU!")
+    print(f"Usando {torch.cuda.device_count()} GPU!")
     model = nn.DataParallel(model)
 
 model = model.to(DEVICE)
 
-# LOSS, OPTIMIZER, SCALER
+
+#################### LOSS & OPTIMIZER ####################
 criterion = nn.CrossEntropyLoss(ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
 scaler = amp.GradScaler()
 
-# PARAMETRI POLY LR
+
+#################### POLY LR CONFIG ####################
 power = 0.9
 N = len(train_dataset)
 steps_per_epoch = math.ceil(N / BATCH_SIZE)
 max_iter = steps_per_epoch * EPOCHS
 
-# FUNZIONE DI PERDITA DA PAPER
+
+#################### PAPER LOSS ####################
 def Loss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
     main_loss = criterion(output, target)
     auxiliary_loss = 0
@@ -98,6 +104,8 @@ def Loss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
     joint_loss = main_loss + alpha * auxiliary_loss
     return joint_loss
 
+
+#################### TRAINING ####################
 def train(model, train_loader, optimizer, criterion, device, num_classes, epoch):
     model.train()
     running_loss = 0.0
@@ -146,7 +154,7 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
     return avg_loss, pixel_acc
 
 
-# VALIDATION
+#################### VALIDATION ####################
 def validate(model, val_loader, criterion, device, num_classes, epoch):
     model.eval()
     val_loss = 0.0
@@ -194,7 +202,8 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
 
     return pixel_acc, mIoU
 
-# MAIN LOOP
+
+#################### MAIN ####################
 if __name__ == '__main__':
     print("Avvio training")
     best_miou = 0.0
