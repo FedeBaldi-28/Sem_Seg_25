@@ -44,14 +44,14 @@ target_transform = transforms.Compose([
 
 # DATASET
 train_dataset = Cityscapes(
-    root='/content/drive/MyDrive/MLDL2024_project/datasets/Cityscapes/Cityscapes/Cityspaces',
+    root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='train',
     transform=input_transform,
     target_transform=target_transform
 )
 
 val_dataset = Cityscapes(
-    root='/content/drive/MyDrive/MLDL2024_project/datasets/Cityscapes/Cityscapes/Cityspaces',
+    root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='val',
     transform=input_transform,
     target_transform=target_transform
@@ -133,7 +133,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
             inputs = inputs.to(device)
             targets = targets.to(device).squeeze(1).long()
             
-            with amp.autocast('cuda'):  # ✅ Aggiunto qui
+            with amp.autocast('cuda'):
                 outputs = model(inputs)
                 if isinstance(outputs, tuple):
                     outputs = outputs[0]
@@ -147,7 +147,6 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
             total_correct += ((preds == targets) & mask).sum().item()
             total_pixels += mask.sum().item()
 
-            # Aggiorna confusion matrix per IoU
             for lp, pp in zip(targets.cpu().numpy(), preds.cpu().numpy()):
                 hist += fast_hist(lp.flatten(), pp.flatten(), num_classes)
 
@@ -171,7 +170,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
 
 # MAIN LOOP
 if __name__ == '__main__':
-    print("avvio training")
+    print("Avvio training")
     best_miou = 0.0
 
     for epoch in range(1, EPOCHS + 1):
