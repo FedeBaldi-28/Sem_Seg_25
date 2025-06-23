@@ -45,7 +45,6 @@ class DiceLoss(nn.Module):
         dice = (2. * intersection + self.smooth) / (union + self.smooth)  # [num_classes]
         dice_loss_per_class = 1 - dice  # [num_classes]
 
-        # Calcola la loss per pixel (loss della classe target per ciascun pixel)
         dice_loss_per_pixel = dice_loss_per_class.gather(0, target)  # [num_pixels]
 
         if self.class_weights is not None:
