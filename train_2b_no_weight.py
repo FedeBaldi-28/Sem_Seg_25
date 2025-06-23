@@ -13,7 +13,8 @@ import math
 from utils import fast_hist, per_class_iou, poly_lr_scheduler
 import numpy as np
 
-# CONFIGURAZIONE
+
+#################### CONFIGURAZIONE ####################
 CONTEXT_PATH = 'resnet18'
 ALPHA = 1
 NUM_CLASSES = 19
@@ -30,7 +31,8 @@ CLASS_NAMES = [
     'train', 'motorcycle', 'bicycle'
 ]
 
-# TRANSFORM
+
+#################### TRANSFORM ####################
 input_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE),
     transforms.ToTensor(),
@@ -41,7 +43,8 @@ target_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE, interpolation=Image.NEAREST),
 ])
 
-# DATASET
+
+#################### DATASET ####################
 train_dataset = Cityscapes(
     root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='train',
@@ -59,23 +62,28 @@ val_dataset = Cityscapes(
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
-# MODELLO
+
+#################### MODEL ####################
 model = BiSeNet(num_classes=NUM_CLASSES, context_path=CONTEXT_PATH)
 if torch.cuda.device_count() > 1:
+    print(f"Usando {torch.cuda.device_count()} GPU!")
     model = nn.DataParallel(model)
 model = model.to(DEVICE)
 
-# LOSS E OTTIMIZZATORE
+
+#################### LOSS & OPTIMIZER ####################
 criterion = nn.CrossEntropyLoss(ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=INIT_LR, momentum=0.9, weight_decay=1e-4)
 scaler = amp.GradScaler()
 
-# POLY LR CONFIG
+
+#################### POLY LR CONFIG ####################
 power = 0.9
 steps_per_epoch = math.ceil(len(train_loader.dataset) / BATCH_SIZE)
 max_iter = steps_per_epoch * EPOCHS
 
-# PAPER LOSS
+
+#################### PAPER LOSS ####################
 def Loss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
     main_loss = criterion(output, target)
     aux_loss = 0
@@ -84,7 +92,8 @@ def Loss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
         aux_loss += criterion(cx2, target)
     return main_loss + alpha * aux_loss
 
-# TRAINING
+
+#################### TRAINING ####################
 def train(model, train_loader, optimizer, criterion, device, num_classes, epoch):
     model.train()
     running_loss = 0.0
@@ -128,7 +137,8 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
     
     return avg_loss, pixel_acc, global_step
 
-# VALIDAZIONE
+
+#################### VALIDATION ####################
 def validate(model, val_loader, criterion, device, num_classes, epoch):
     model.eval()
     val_loss = 0.0
@@ -171,7 +181,8 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
     
     return pixel_acc, mIoU
 
-# MAIN
+
+#################### MAIN ####################
 if __name__ == '__main__':
     print("Avvio training")
     best_miou = 0.0
