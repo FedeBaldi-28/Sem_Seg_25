@@ -86,7 +86,7 @@ val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_w
 
 
 #################### MODEL ####################
-model = BiSeNet(num_classes=NUM_CLASSES, context_path='resnet18').to(DEVICE)
+model = BiSeNet(num_classes=NUM_CLASSES, context_path=CONTEXT_PATH).to(DEVICE)
 
 if torch.cuda.device_count() > 1:
     print(f"Usando {torch.cuda.device_count()} GPU!")
