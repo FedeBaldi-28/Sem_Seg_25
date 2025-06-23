@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from torchvision import transforms
 import time
 from PIL import Image
@@ -11,18 +11,20 @@ import numpy as np
 from datasets.cityscapes import CityscapesTarget
 from datasets.gta5 import GTA5
 from models.bisenet.build_bisenet import BiSeNet
-from utils import compute_mIoU, fast_hist, per_class_iou, poly_lr_scheduler
+from utils import fast_hist, per_class_iou, poly_lr_scheduler
 import math
 import random
 from datasets.transforms import JointTransform
 from torch.utils.data import Subset
 from torch.cuda import amp
-from train_gta5 import FCDiscriminator
+from models.discriminator import FCDiscriminator
 from itertools import cycle
 import torch.nn.functional as F
 
 
-# CONFIGURAZIONE
+#################### CONFIGURAZIONE ####################
+CONTEXT_PATH = 'resnet18'
+ALPHA = 1
 NUM_CLASSES = 19
 BATCH_SIZE = 8
 EPOCHS = 50
@@ -30,10 +32,6 @@ LEARNING_RATE = 2.5e-2
 IMG_SIZE = (720, 1280)
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-# alpha per funzione loss
-ALPHA = 1
-
-# NOMI DELLE CLASSI
 CLASS_NAMES = [
     'road', 'sidewalk', 'building', 'wall', 'fence', 'pole',
     'traffic light', 'traffic sign', 'vegetation', 'terrain',
@@ -41,7 +39,8 @@ CLASS_NAMES = [
     'train', 'motorcycle', 'bicycle'
 ]
 
-# TRANSFORM
+
+#################### TRANSFORM ####################
 input_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE),
     transforms.ToTensor(),
@@ -52,7 +51,8 @@ target_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE, interpolation=Image.NEAREST),
 ])
 
-# PERCORSI
+
+#################### DATASET ####################
 dataset_root = "/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/GTA5/GTA5"
 
 train_joint_transform = JointTransform(
@@ -97,28 +97,25 @@ target_dataset = CityscapesTarget(
     transform=transform_cityscapes
 )
 
-
-# DATALOADER
 train_loader_gta = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 val_loader_gta = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
 cityscapes_loader = DataLoader(target_dataset,batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
 
-# MODELLO
-model = BiSeNet(num_classes=NUM_CLASSES, context_path='resnet18').to(DEVICE)
-# DEFINIZIONE DEL DISCRIMINATORE E OPTIMIZER ASSOCIATO
+#################### MODEL & DISCRIMINATOR ####################
+model = BiSeNet(num_classes=NUM_CLASSES, context_path=CONTEXT_PATH).to(DEVICE)
 D = FCDiscriminator(num_classes=NUM_CLASSES).to(DEVICE)
 
-
 if torch.cuda.device_count() > 1:
-    print(f"🚀 Usando {torch.cuda.device_count()} GPU!")
+    print(f"Usando {torch.cuda.device_count()} GPU!")
     model = nn.DataParallel(model)
     D = torch.nn.DataParallel(D)
 
 model = model.to(DEVICE)
 D = D.to(DEVICE)
 
-# LOSS, OPTIMIZER, SCALER
+
+#################### LOSS & OPTIMIZER ####################
 criterion = nn.CrossEntropyLoss(ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
 scaler = amp.GradScaler()
@@ -126,13 +123,19 @@ scaler = amp.GradScaler()
 optimizer_D = torch.optim.Adam(D.parameters(),lr=1e-4,betas=(0.9, 0.99))
 optimizer_D.zero_grad()
 
-# PARAMETRI POLY LR
+#################### DISCRIMINATOR LOSS ####################
+bce_loss = torch.nn.BCEWithLogitsLoss()
+lambda_adv = 0.001
+
+
+#################### POLY LR CONFIG ####################
 power = 0.9
 N = len(train_dataset)
 steps_per_epoch = math.ceil(N / BATCH_SIZE)
 max_iter = steps_per_epoch * EPOCHS
 
-# PAPER LOSS
+
+#################### PAPER LOSS ####################
 def SegLoss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
     output = output.float()    
     main_loss = criterion(output, target)
@@ -145,11 +148,6 @@ def SegLoss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
     joint_loss = main_loss + alpha * auxiliary_loss
     return joint_loss
 
-# DISCRIMINATOR LOSS
-bce_loss = torch.nn.BCEWithLogitsLoss()
-
-# lambda per la segmentazione e l'adversarial loss
-lambda_adv = 0.001
 
 #################### TRAINING ####################
 def train(model, train_loader, optimizer, criterion, device, num_classes, epoch):
@@ -291,7 +289,8 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
 
     return pixel_acc, mIoU
 
-#################### MAIN LOOP ####################
+
+#################### MAIN ####################
 if __name__ == '__main__':
     print("Avvio training")
     best_miou = 0.0
