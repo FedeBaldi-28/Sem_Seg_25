@@ -141,7 +141,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
 
     with torch.no_grad():
         for inputs, targets in tqdm(val_loader):
-            cx1 = cx2 = None   # Per sicurezza, inizializzo a None
+            cx1 = cx2 = None
             inputs, targets = inputs.to(device), targets.to(device).squeeze(1).long()
             with amp.autocast():
                 outputs = model(inputs)
