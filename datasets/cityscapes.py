@@ -43,3 +43,31 @@ class Cityscapes(Dataset):
         mask = T.PILToTensor()(mask).long().squeeze(0)
 
         return img, mask
+
+
+class CityscapesTarget(Dataset):
+    def __init__(self, root, split='train', transform=None):
+        self.root = root
+        self.split = split
+        self.image_dir = os.path.join(root, 'images', split)
+        self.transform = transform
+
+        self.images = []
+
+        for city in os.listdir(self.image_dir):
+            img_folder = os.path.join(self.image_dir, city)
+            for file_name in os.listdir(img_folder):
+                if file_name.endswith('_leftImg8bit.png'):
+                    img_path = os.path.join(img_folder, file_name)
+                    self.images.append(img_path)
+
+        self.images.sort()  # Ordine stabile
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        img = Image.open(self.images[idx]).convert('RGB')
+        if self.transform:
+            img = self.transform(img)
+        return img
