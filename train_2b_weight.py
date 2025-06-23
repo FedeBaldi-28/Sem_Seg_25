@@ -1,4 +1,3 @@
-%%writefile /kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/train.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -60,10 +59,11 @@ val_dataset = Cityscapes(
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
-# CALCOLO PESI CLASSI
+# COMPUTE WEIGHTS
 def compute_pixel_frequency(dataloader, num_classes):
     class_pixel_count = np.zeros(num_classes, dtype=np.int64)
-    image_class_pixels = np.zeros((len(dataloader.dataset), num_classes), dtype=np.int64)
+    num_images = len(dataloader.dataset)
+    image_class_pixels = np.zeros((num_images, num_classes), dtype=np.int64)
     img_counter = 0
 
     for _, targets in tqdm(dataloader):
@@ -82,16 +82,29 @@ def median_frequency_balancing(class_pixel_count, image_class_pixels):
     for class_id in range(NUM_CLASSES):
         image_pixels = image_class_pixels[:, class_id]
         image_pixels = image_pixels[image_pixels > 0]
-        frequencies[class_id] = np.mean(image_pixels) if len(image_pixels) > 0 else 0.0
+        if len(image_pixels) > 0:
+            frequencies[class_id] = np.mean(image_pixels)
+        else:
+            frequencies[class_id] = 0.0
 
     median_freq = np.median(frequencies[frequencies > 0])
-    weights = np.array([median_freq / f if f > 0 else 0.0 for f in frequencies])
+
+    weights = np.zeros(NUM_CLASSES)
+    for i in range(NUM_CLASSES):
+        if frequencies[i] > 0:
+            weights[i] = median_freq / frequencies[i]
+        else:
+            weights[i] = 0.0
+
     return weights
 
-print("Calcolo pesi classi...")
 class_pixel_count, image_class_pixels = compute_pixel_frequency(train_loader, NUM_CLASSES)
 weights = median_frequency_balancing(class_pixel_count, image_class_pixels)
-weights_tensor = torch.tensor(weights, dtype=torch.float32).to(DEVICE)
+print("Class Weights (Median Frequency Balancing):")
+print(weights)
+
+normalized_weights = weights / weights.sum() * len(weights)
+weights_tensor = torch.tensor(normalized_weights, dtype=torch.float32).to(DEVICE)
 
 # MODELLO
 model = BiSeNet(num_classes=NUM_CLASSES, context_path=CONTEXT_PATH)
@@ -100,7 +113,7 @@ if torch.cuda.device_count() > 1:
 model = model.to(DEVICE)
 
 # LOSS E OTTIMIZZATORE
-criterion = nn.CrossEntropyLoss(weight=weights_tensor, ignore_index=255)
+criterion = nn.CrossEntropyLoss(ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=INIT_LR, momentum=0.9, weight_decay=1e-4)
 scaler = amp.GradScaler()
 
@@ -109,7 +122,7 @@ power = 0.9
 steps_per_epoch = math.ceil(len(train_loader.dataset) / BATCH_SIZE)
 max_iter = steps_per_epoch * EPOCHS
 
-# LOSS PERSONALIZZATA
+# PAPER LOSS
 def Loss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
     main_loss = criterion(output, target)
     aux_loss = 0
@@ -119,8 +132,7 @@ def Loss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
     return main_loss + alpha * aux_loss
 
 # TRAINING
-
-def train(model, train_loader, optimizer, criterion, device, num_classes, epoch, global_step):
+def train(model, train_loader, optimizer, criterion, device, num_classes, epoch):
     model.train()
     running_loss = 0.0
     total_correct = 0
@@ -132,9 +144,8 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch,
         inputs = inputs.to(device)
         targets = targets.to(device).squeeze(1).long()
 
-        poly_lr_scheduler(optimizer, INIT_LR, global_step, max_iter=max_iter, power=power)
-        
-        global_step += 1
+        current_iter = (epoch - 1) * steps_per_epoch + batch_idx
+        poly_lr_scheduler(optimizer, LEARNING_RATE, current_iter, max_iter=max_iter, power=0.9)
 
         optimizer.zero_grad()
         with amp.autocast():
@@ -159,7 +170,9 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch,
     avg_loss = running_loss / total_batches
     pixel_acc = total_correct / total_pixels
     current_lr = optimizer.param_groups[0]['lr']
+    
     print(f"[Epoch {epoch}] | [Train] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | Time: {time.time() - start_time:.1f}s | Learning rate finale epoca: {current_lr:.6f}")
+    
     return avg_loss, pixel_acc, global_step
 
 # VALIDAZIONE
@@ -170,6 +183,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
     total_pixels = 0
     total_batches = len(val_loader)
     start_time = time.time()
+    
     hist = np.zeros((num_classes, num_classes))
 
     with torch.no_grad():
@@ -196,18 +210,22 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
     pixel_acc = total_correct / total_pixels
     ious = per_class_iou(hist)
     mIoU = np.nanmean(ious) * 100
+    
     print(f"[Epoch {epoch}] | [Val] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | mIoU: {mIoU:.2f}% | Time: {time.time() - start_time:.1f}s")
+    
     for idx, iou_cls in enumerate(ious * 100):
         print(f"  {CLASS_NAMES[idx]}: {iou_cls:.2f}%")
+    
     return pixel_acc, mIoU
 
 # MAIN
 if __name__ == '__main__':
+    print("Avvio training")
     best_miou = 0.0
-    global_step = 0
+    
     for epoch in range(1, EPOCHS + 1):
         print(f"Epoch {epoch}/{EPOCHS}")
-        _, _, global_step = train(model, train_loader, optimizer, criterion, DEVICE, NUM_CLASSES, epoch, global_step)
+        _, _ = train(model, train_loader, optimizer, criterion, DEVICE, NUM_CLASSES, epoch)
         pixel_acc, mean_iou = validate(model, val_loader, criterion, DEVICE, NUM_CLASSES, epoch)
 
         torch.cuda.empty_cache()
