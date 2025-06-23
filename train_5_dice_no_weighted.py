@@ -21,29 +21,43 @@ from train_gta5 import FCDiscriminator
 from itertools import cycle
 import torch.nn.functional as F
 
-#################### DICE LOSS ####################
-class DiceLoss(nn.Module):
-    def __init__(self, ignore_index=255, smooth=1.0):
+#################### DICE LOSS ####################class DiceLoss(nn.Module):
+    def __init__(self, class_weights=None, ignore_index=255, smooth=1.0):
         super().__init__()
         self.ignore_index = ignore_index
         self.smooth = smooth
+        
+        if class_weights is not None:
+            self.class_weights = class_weights.view(1, -1)  # [1, num_classes]
+        else:
+            self.class_weights = None
 
     def forward(self, input, target):
         input, target = self.flatten(input, target, self.ignore_index)
-        input = F.softmax(input, dim=1)
+        input = F.softmax(input, dim=1)  # [num_pixels, C]
 
-        target_one_hot = F.one_hot(target, num_classes=input.shape[1]).float()  # [N, C]
+        target_one_hot = F.one_hot(target, num_classes=input.shape[1]).float()  # [num_pixels, C]
 
         intersection = (input * target_one_hot).sum(dim=0)
         union = input.sum(dim=0) + target_one_hot.sum(dim=0)
 
-        dice = (2. * intersection + self.smooth) / (union + self.smooth)
-        return 1 - dice.mean()
+        dice = (2. * intersection + self.smooth) / (union + self.smooth)  # [num_classes]
+        dice_loss_per_class = 1 - dice  # [num_classes]
+
+        # Calcola la loss per pixel (loss della classe target per ciascun pixel)
+        dice_loss_per_pixel = dice_loss_per_class.gather(0, target)  # [num_pixels]
+
+        if self.class_weights is not None:
+            weights = self.class_weights[0].gather(0, target)  # [num_pixels]
+            weighted_loss = dice_loss_per_pixel * weights
+            return weighted_loss.mean()
+        else:
+            return dice_loss_per_pixel.mean()
 
     def flatten(self, input, target, ignore_index):
         num_classes = input.size(1)
-        input = input.permute(0, 2, 3, 1).contiguous().view(-1, num_classes)  # [N, C]
-        target = target.view(-1)  # [N]
+        input = input.permute(0, 2, 3, 1).contiguous().view(-1, num_classes)  # [num_pixels, C]
+        target = target.view(-1)  # [num_pixels]
         mask = target != ignore_index
         return input[mask], target[mask]
 
