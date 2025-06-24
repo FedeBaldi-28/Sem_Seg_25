@@ -130,10 +130,9 @@ def median_frequency_balancing(class_pixel_count, image_class_pixels):
 
     return weights
 
-print("🔍 Calcolo class weights con MFB su GTA5...")
 class_pixel_count, image_class_pixels = compute_pixel_frequency(train_loader_gta, NUM_CLASSES)
 weights = median_frequency_balancing(class_pixel_count, image_class_pixels)
-print("✅ Class Weights (Median Frequency Balancing):")
+print("Class Weights (Median Frequency Balancing):")
 print(weights)
 
 normalized_weights = weights / weights.sum() * len(weights)
