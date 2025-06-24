@@ -10,7 +10,7 @@ from torchvision import transforms
 from tqdm import tqdm
 from torch.cuda.amp import autocast, GradScaler
 import numpy as np
-from utils import fast_hist, per_class_iou
+from utils import fast_hist, per_class_iou, compute_pixel_frequency, median_frequency_balancing
 import math
 from torch import amp
 
@@ -63,45 +63,6 @@ val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_w
 
 
 #################### COMPUTE WEIGHTS ####################
-def compute_pixel_frequency(dataloader, num_classes):
-    class_pixel_count = np.zeros(num_classes, dtype=np.int64)
-    num_images = len(dataloader.dataset)
-    image_class_pixels = np.zeros((num_images, num_classes), dtype=np.int64)
-    img_counter = 0
-
-    for _, targets in tqdm(dataloader):
-        for j in range(targets.size(0)):
-            label = np.array(targets[j])
-            for class_id in range(num_classes):
-                pixel_count = np.sum(label == class_id)
-                class_pixel_count[class_id] += pixel_count
-                image_class_pixels[img_counter, class_id] = pixel_count
-            img_counter += 1
-            
-    return class_pixel_count, image_class_pixels
-
-
-def median_frequency_balancing(class_pixel_count, image_class_pixels):
-    frequencies = np.zeros(NUM_CLASSES)
-    for class_id in range(NUM_CLASSES):
-        image_pixels = image_class_pixels[:, class_id]
-        image_pixels = image_pixels[image_pixels > 0]
-        if len(image_pixels) > 0:
-            frequencies[class_id] = np.mean(image_pixels)
-        else:
-            frequencies[class_id] = 0.0
-
-    median_freq = np.median(frequencies[frequencies > 0])
-
-    weights = np.zeros(NUM_CLASSES)
-    for i in range(NUM_CLASSES):
-        if frequencies[i] > 0:
-            weights[i] = median_freq / frequencies[i]
-        else:
-            weights[i] = 0.0
-
-    return weights
-
 class_pixel_count, image_class_pixels = compute_pixel_frequency(train_loader, NUM_CLASSES)
 weights = median_frequency_balancing(class_pixel_count, image_class_pixels)
 print("Class Weights (Median Frequency Balancing):")
