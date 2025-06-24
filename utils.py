@@ -113,12 +113,3 @@ def median_frequency_balancing(class_pixel_count, image_class_pixels):
 
     return weights
 
-class_pixel_count, image_class_pixels = compute_pixel_frequency(train_loader_gta, NUM_CLASSES)
-weights = median_frequency_balancing(class_pixel_count, image_class_pixels)
-print("Class Weights (Median Frequency Balancing):")
-print(weights)
-
-normalized_weights = weights / weights.sum() * len(weights)
-print(normalized_weights)
-weights_tensor = torch.tensor(normalized_weights, dtype=torch.float32).to(DEVICE)
-
