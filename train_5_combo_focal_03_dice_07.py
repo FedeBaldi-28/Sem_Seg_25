@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from torchvision import transforms
 import time
 from PIL import Image
@@ -11,13 +11,13 @@ import numpy as np
 from datasets.gta5 import GTA5
 from datasets.cityscapes import CityscapesTarget
 from models.bisenet.build_bisenet import BiSeNet
-from utils import compute_mIoU, fast_hist, per_class_iou, poly_lr_scheduler
+from utils import fast_hist, per_class_iou, poly_lr_scheduler
 import math
 import random
 from datasets.transforms import JointTransform
 from torch.utils.data import Subset
 from torch.cuda import amp
-from train_gta5 import FCDiscriminator
+from models.discriminator import FCDiscriminator
 from itertools import cycle
 import torch.nn.functional as F
 
