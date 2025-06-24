@@ -58,7 +58,7 @@ def convert_masks_once(root):
             mask_id[matches] = label_id
         return mask_id
 
-    print(f"🔁 Conversione maschere RGB in ID (salvate in: {converted_dir})")
+    print(f"Conversione maschere RGB in ID (salvate in: {converted_dir})")
 
     for fname in tqdm(images):
         converted_name = fname.replace(".png", "_converted.png")
@@ -72,4 +72,6 @@ def convert_masks_once(root):
         label_mask = rgb_to_label_id(rgb_mask)
         Image.fromarray(label_mask).save(save_path)
 
-    print("✅ Conversione completata.")
+    print("Conversione completata.")
+
+
