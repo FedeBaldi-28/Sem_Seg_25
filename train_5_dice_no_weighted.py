@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from torchvision import transforms
 import time
 from PIL import Image
@@ -11,77 +11,58 @@ import numpy as np
 from datasets.gta5 import GTA5
 from datasets.cityscapes import CityscapesTarget
 from models.bisenet.build_bisenet import BiSeNet
-from utils import compute_mIoU, fast_hist, per_class_iou, poly_lr_scheduler
+from utils import fast_hist, per_class_iou, poly_lr_scheduler
 import math
 import random
 from datasets.transforms import JointTransform
 from torch.utils.data import Subset
 from torch.cuda import amp
-from train_gta5 import FCDiscriminator
+from models.discriminator import FCDiscriminator
 from itertools import cycle
 import torch.nn.functional as F
-
-#################### DICE LOSS ####################class DiceLoss(nn.Module):
-    def __init__(self, class_weights=None, ignore_index=255, smooth=1.0):
-        super().__init__()
-        self.ignore_index = ignore_index
-        self.smooth = smooth
-        
-        if class_weights is not None:
-            self.class_weights = class_weights.view(1, -1)  # [1, num_classes]
-        else:
-            self.class_weights = None
-
-    def forward(self, input, target):
-        input, target = self.flatten(input, target, self.ignore_index)
-        input = F.softmax(input, dim=1)  # [num_pixels, C]
-
-        target_one_hot = F.one_hot(target, num_classes=input.shape[1]).float()  # [num_pixels, C]
-
-        intersection = (input * target_one_hot).sum(dim=0)
-        union = input.sum(dim=0) + target_one_hot.sum(dim=0)
-
-        dice = (2. * intersection + self.smooth) / (union + self.smooth)  # [num_classes]
-        dice_loss_per_class = 1 - dice  # [num_classes]
-
-        # Calcola la loss per pixel (loss della classe target per ciascun pixel)
-        dice_loss_per_pixel = dice_loss_per_class.gather(0, target)  # [num_pixels]
-
-        if self.class_weights is not None:
-            weights = self.class_weights[0].gather(0, target)  # [num_pixels]
-            weighted_loss = dice_loss_per_pixel * weights
-            return weighted_loss.mean()
-        else:
-            return dice_loss_per_pixel.mean()
-
-    def flatten(self, input, target, ignore_index):
-        num_classes = input.size(1)
-        input = input.permute(0, 2, 3, 1).contiguous().view(-1, num_classes)  # [num_pixels, C]
-        target = target.view(-1)  # [num_pixels]
-        mask = target != ignore_index
-        return input[mask], target[mask]
+from losses import DiceLoss
 
 
+#################### CONFIGURAZIONE ####################
+CONTEXT_PATH = 'resnet18'
+ALPHA = 1
 NUM_CLASSES = 19
-BATCH_SIZE = 8
+BATCH_SIZE = 4
 EPOCHS = 50
 LEARNING_RATE = 2.5e-2
 IMG_SIZE = (720, 1280)
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-ALPHA = 1
-CLASS_NAMES = [ 'road', 'sidewalk', 'building', 'wall', 'fence', 'pole', 'traffic light', 'traffic sign', 'vegetation', 'terrain', 'sky', 'person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle' ]
 
+CLASS_NAMES = [
+    'road', 'sidewalk', 'building', 'wall', 'fence', 'pole',
+    'traffic light', 'traffic sign', 'vegetation', 'terrain',
+    'sky', 'person', 'rider', 'car', 'truck', 'bus',
+    'train', 'motorcycle', 'bicycle'
+]
+
+
+#################### TRANSFORM ####################
 input_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
+
 target_transform = transforms.Compose([
     transforms.Resize(IMG_SIZE, interpolation=Image.NEAREST),
 ])
 
+transform_cityscapes = transforms.Compose([
+    transforms.Resize((512, 1024)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+
+#################### DATASET ####################
 dataset_root = "/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/GTA5/GTA5"
-train_joint_transform = JointTransform(input_transform, target_transform, augment=True, strategy='jitter')
+
+train_joint_transform = JointTransform(input_transform, target_transform, augment=True, strategy='flip-jitter')
 val_joint_transform = JointTransform(input_transform, target_transform, augment=False, strategy='none')
 
 train_full = GTA5(root=dataset_root, joint_transform=train_joint_transform)
@@ -99,11 +80,6 @@ val_indices = indices[train_size:]
 train_dataset = Subset(train_full, train_indices)
 val_dataset = Subset(val_full, val_indices)
 
-transform_cityscapes = transforms.Compose([
-    transforms.Resize((512, 1024)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
 target_dataset = CityscapesTarget(
     root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
     split='train',
@@ -114,25 +90,21 @@ train_loader_gta = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True
 val_loader_gta = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
 cityscapes_loader = DataLoader(target_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
-# ==============================
-# Modello & Discriminatore
-# ==============================
 
+#################### MODEL & DISCRIMINATOR ####################
 model = BiSeNet(num_classes=NUM_CLASSES, context_path='resnet18').to(DEVICE)
 D = FCDiscriminator(num_classes=NUM_CLASSES).to(DEVICE)
 
 if torch.cuda.device_count() > 1:
-    print(f"🚀 Usando {torch.cuda.device_count()} GPU!")
+    print(f"Usando {torch.cuda.device_count()} GPU!")
     model = nn.DataParallel(model)
     D = nn.DataParallel(D)
 
 model = model.to(DEVICE)
 D = D.to(DEVICE)
 
-# ==============================
-# Ottimizzatori e perdita
-# ==============================
 
+#################### LOSS & OPTIMIZER ####################
 criterion = DiceLoss(ignore_index=255, smooth=1.0)
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
 optimizer_D = optim.Adam(D.parameters(), lr=1e-4, betas=(0.9, 0.99))
@@ -145,10 +117,8 @@ max_iter = steps_per_epoch * EPOCHS
 bce_loss = nn.BCEWithLogitsLoss()
 lambda_adv = 0.001
 
-# ==============================
-# Funzioni di perdita ausiliaria
-# ==============================
 
+#################### PAPER LOSS ####################
 def SegLoss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
     output = output.float()
     main_loss = criterion(output, target)
@@ -160,10 +130,8 @@ def SegLoss(output, target, criterion, cx1=None, cx2=None, alpha=1.0):
         auxiliary_loss += criterion(cx2, target)
     return main_loss + alpha * auxiliary_loss
 
-# ==============================
-# Training
-# ==============================
 
+#################### TRAINING ####################
 def train(model, train_loader, optimizer, criterion, device, num_classes, epoch):
     model.train()
     D.train()
@@ -193,6 +161,7 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
                 src_cx1, src_cx2 = source_outputs[1], source_outputs[2]
                 source_outputs = source_outputs[0]
 
+
             seg_loss = SegLoss(source_outputs, source_targets, criterion, src_cx1, src_cx2, alpha=ALPHA)
             target_outputs = model(target_inputs)
             if isinstance(target_outputs, tuple): target_outputs = target_outputs[0]
@@ -201,6 +170,9 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
             adv_loss = lambda_adv * bce_loss(D_out, torch.full(D_out.size(), 0.0, device=device))
 
             total_loss = seg_loss + adv_loss
+            if torch.isnan(total_loss) or torch.isinf(total_loss):
+                print("❌ Attenzione: total_loss contiene NaN o Inf! Interrompo il training.")
+                exit(1)
 
         scaler.scale(total_loss).backward()
         scaler.step(optimizer)
@@ -239,19 +211,15 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
     current_lr = optimizer.param_groups[0]['lr']
 
     print(f"[Epoch {epoch}] | Total Loss: {avg_total_loss:.4f} | Seg Loss: {avg_seg_loss:.4f} | Adv Loss: {avg_adv_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | Time: {epoch_time:.1f}s | LR: {current_lr:.6f}")
-    
     return avg_total_loss, pixel_acc
 
-# ==============================
-# Validazione
-# ==============================
 
+#################### VALIDATION ####################
 def validate(model, val_loader, criterion, device, num_classes, epoch):
     model.eval()
     val_loss = total_correct = total_pixels = 0
     total_batches = len(val_loader)
     start_time = time.time()
-    
     hist = np.zeros((num_classes, num_classes))
 
     with torch.no_grad():
@@ -286,16 +254,13 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
     epoch_time = time.time() - start_time
 
     print(f"[Epoch {epoch}] | [Val] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | mIoU: {mIoU:.2f}% | Time: {epoch_time:.1f}s")
-    
-  for idx, iou_cls in enumerate(ious_per_class):
+    for idx, iou_cls in enumerate(ious_per_class):
         print(f"  {CLASS_NAMES[idx]}: {iou_cls:.2f}%")
 
     return pixel_acc, mIoU
+    
 
-# ==============================
-# MAIN
-# ==============================
-
+#################### MAIN ####################
 if __name__ == '__main__':
     print("Avvio training")
     best_miou = 0.0
