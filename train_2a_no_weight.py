@@ -1,3 +1,4 @@
+%%writefile /kaggle/working/dataset1/Sem_Seg_25/train_2a_no_weights.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
