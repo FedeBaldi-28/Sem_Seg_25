@@ -232,7 +232,7 @@ if __name__ == '__main__':
         if mean_iou > best_miou:
             best_miou = mean_iou
             torch.save(model.state_dict(), 'best_model_3b_blur.pth')
-            print(f"Nuova best accuracy: {best_miou:.2f}% → model saved!")
+            print(f"New best accuracy: {best_miou:.2f}% → model saved!")
 
         print(f"Epoch {epoch} completed! Best accuracy so far: {best_miou:.2f}%\n\n")
 
