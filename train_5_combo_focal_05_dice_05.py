@@ -289,5 +289,5 @@ if __name__ == '__main__':
 
         print(f"Epoch {epoch} completato! Best mIoU finora: {best_miou:.2f}%\n\n")
 
-    torch.save(model.state_dict(), f'final_model_epoch_5_05_focal_05_dice{EPOCHS}.pth')
-    print(f"📦 Training finito: modello finale salvato come final_model_epoch_5_05_focal_05_dice{EPOCHS}.pth")
+    torch.save(model.state_dict(), f'final_model_epoch_5_combo_05_focal_05_dice{EPOCHS}.pth')
+    print(f"📦 Training finito: modello finale salvato come final_model_epoch_5_combo_05_focal_05_dice{EPOCHS}.pth")
