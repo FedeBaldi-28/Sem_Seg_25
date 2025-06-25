@@ -32,14 +32,13 @@ class Cityscapes(Dataset):
 
     def __getitem__(self, idx):
         img = Image.open(self.images[idx]).convert('RGB')
-        mask = Image.open(self.masks[idx])  # già in scala di grigi
+        mask = Image.open(self.masks[idx])
 
         if self.transform:
             img = self.transform(img)
         if self.target_transform:
             mask = self.target_transform(mask)
 
-        # Converti la maschera in tensor long [H, W] (con valori di classe interi)
         mask = T.PILToTensor()(mask).long().squeeze(0)
 
         return img, mask
@@ -61,7 +60,7 @@ class CityscapesTarget(Dataset):
                     img_path = os.path.join(img_folder, file_name)
                     self.images.append(img_path)
 
-        self.images.sort()  # Ordine stabile
+        self.images.sort()
 
     def __len__(self):
         return len(self.images)
