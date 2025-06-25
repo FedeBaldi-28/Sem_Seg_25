@@ -65,7 +65,7 @@ val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_w
 
 #################### COMPUTE WEIGHTS ####################
 class_pixel_count, image_class_pixels = compute_pixel_frequency(train_loader, NUM_CLASSES)
-weights = median_frequency_balancing(class_pixel_count, image_class_pixels)
+weights = median_frequency_balancing(class_pixel_count, image_class_pixels, NUM_CLASSES)
 print("Class Weights (Median Frequency Balancing):")
 print(weights)
 
