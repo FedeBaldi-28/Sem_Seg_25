@@ -15,7 +15,7 @@ from utils import fast_hist, per_class_iou, poly_lr_scheduler, compute_pixel_fre
 import math
 import random
 from datasets.transforms import JointTransform
-from torch.utils.data import Subset
+from torch.utils.data import random_split
 from torch.cuda import amp
 from models.discriminator import FCDiscriminator
 from itertools import cycle
@@ -62,23 +62,21 @@ transform_cityscapes = transforms.Compose([
 #################### DATASET ####################
 dataset_root = "/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/GTA5/GTA5"
 
-train_joint_transform = JointTransform(input_transform, target_transform, augment=True, strategy='flip-jitter')
+# 1) Dataset base SENZA trasformazione
+base_dataset = GTA5(root=dataset_root, joint_transform=None)
+
+train_size = int(0.8 * len(base_dataset))
+val_size = len(base_dataset) - train_size
+generator = torch.Generator().manual_seed(42)
+train_subset, val_subset = random_split(base_dataset, [train_size, val_size], generator=generator)
+
+# 3) Definisci le tue trasformazioni
+train_joint_transform = JointTransform(input_transform, target_transform, augment=True, strategy='jitter')
 val_joint_transform = JointTransform(input_transform, target_transform, augment=False, strategy='none')
 
-train_full = GTA5(root=dataset_root, joint_transform=train_joint_transform)
-val_full = GTA5(root=dataset_root, joint_transform=val_joint_transform)
-
-train_size = int(0.8 * len(train_full))
-val_size = len(train_full) - train_size
-indices = list(range(len(train_full)))
-
-random.seed(42)
-random.shuffle(indices)
-train_indices = indices[:train_size]
-val_indices = indices[train_size:]
-
-train_dataset = Subset(train_full, train_indices)
-val_dataset = Subset(val_full, val_indices)
+# 4) Avvolgi i subset nel wrapper per applicare le trasformazioni diverse
+train_dataset = GTA5Wrapper(train_subset, joint_transform=train_joint_transform)
+val_dataset = GTA5Wrapper(val_subset, joint_transform=val_joint_transform)
 
 target_dataset = CityscapesTarget(
     root='/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/Cityscapes/Cityscapes/Cityspaces',
