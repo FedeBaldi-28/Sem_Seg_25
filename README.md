@@ -10,9 +10,11 @@ In this report, we address the challenges of real-time domain adaptation in sema
 **GTA5**: https://drive.google.com/file/d/1xYxlcMR2WFCpayNrW2-Rb7N-950vvl23/view?usp=sharing
 
 ## utils
-utils.py: Contains helper functions to compute: learning rate scheduler, pixel frequency calculator, mIoU computation.
+
+utils.py contains helper functions to compute: learning rate with polynomial decay, calculation of IoU by class, conversion of the dataset masks from GTA5 from RGB to numeric IDs, calculation of balancing weights using the Median Frequency Balancing technique.
 
 ## Step 2 – Supervised Training on Cityscapes
+
 **Train DeepLabV2:**
 
 - Without class weights: train_2a_no_weight.py
@@ -20,11 +22,13 @@ utils.py: Contains helper functions to compute: learning rate scheduler, pixel f
 - With class weights: train_2a_weight.py
 
 **Train BiSeNet:**
+
 - Without class weights: train_2b_no_weight.py
 
 - With class weights: train_2b_weight.py
 
 **Evaluate models:**
+
 Use evaluation.py on Cityscapes validation set.
 
 ## Step 3 – Domain Shift Evaluation
@@ -32,6 +36,7 @@ Use evaluation.py on Cityscapes validation set.
 Before training convert_gta5_mask.py converts RGB segmentation masks to class IDs using labels.py.
 
 **Train BiSeNet on GTA5 and test on Cityscapes:**
+
 No augmentation: 
 
 - train_3a.py
@@ -57,7 +62,9 @@ The discriminator was implemented in discriminator.py
 Use evaluation.py on Cityscapes validation set.
 
 ## Step 5 – Loss Extensions
+
 Experiments with advanced loss functions for rare class emphasis.
+
 losses.py contains the definition of Focal loss, Dice loss and their combination.
 
 **Focal loss:**
