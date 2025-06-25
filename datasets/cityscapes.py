@@ -15,10 +15,13 @@ class Cityscapes(Dataset):
         self.images = []
         self.masks = []
 
-        for city in os.listdir(self.image_dir):
+        cities = sorted(os.listdir(self.image_dir))
+        for city in cities:
             img_folder = os.path.join(self.image_dir, city)
             mask_folder = os.path.join(self.mask_dir, city)
-            for file_name in os.listdir(img_folder):
+            img_files = sorted(os.listdir(img_folder)) 
+
+            for file_name in (img_files):
                 if file_name.endswith('_leftImg8bit.png'):
                     img_path = os.path.join(img_folder, file_name)
                     mask_name = file_name.replace('_leftImg8bit.png', '_gtFine_labelTrainIds.png')
@@ -32,7 +35,7 @@ class Cityscapes(Dataset):
 
     def __getitem__(self, idx):
         img = Image.open(self.images[idx]).convert('RGB')
-        mask = Image.open(self.masks[idx])
+        mask = Image.open(self.masks[idx])  # già in scala di grigi
 
         if self.transform:
             img = self.transform(img)
@@ -42,31 +45,3 @@ class Cityscapes(Dataset):
         mask = T.PILToTensor()(mask).long().squeeze(0)
 
         return img, mask
-
-
-class CityscapesTarget(Dataset):
-    def __init__(self, root, split='train', transform=None):
-        self.root = root
-        self.split = split
-        self.image_dir = os.path.join(root, 'images', split)
-        self.transform = transform
-
-        self.images = []
-
-        for city in os.listdir(self.image_dir):
-            img_folder = os.path.join(self.image_dir, city)
-            for file_name in os.listdir(img_folder):
-                if file_name.endswith('_leftImg8bit.png'):
-                    img_path = os.path.join(img_folder, file_name)
-                    self.images.append(img_path)
-
-        self.images.sort()
-
-    def __len__(self):
-        return len(self.images)
-
-    def __getitem__(self, idx):
-        img = Image.open(self.images[idx]).convert('RGB')
-        if self.transform:
-            img = self.transform(img)
-        return img
