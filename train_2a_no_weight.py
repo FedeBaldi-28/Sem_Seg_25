@@ -175,7 +175,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
 
 #################### MAIN ####################
 if __name__ == '__main__':
-    print("Start training")
+    print("start of training")
     best_miou = 0.0
 
     for epoch in range(1, EPOCHS + 1):
@@ -188,7 +188,7 @@ if __name__ == '__main__':
         if mean_iou > best_miou:
             best_miou = mean_iou
             torch.save(model.state_dict(), 'best_model_2a_no_weight.pth')
-            print(f"Nuova best accuracy: {best_miou:.2f}% → model saved!")
+            print(f"New best accuracy: {best_miou:.2f}% → model saved!")
 
         print(f"Epoch {epoch} completed! Best accuracy so far: {best_miou:.2f}%\n\n")
 
