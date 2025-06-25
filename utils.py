@@ -92,7 +92,7 @@ def compute_pixel_frequency(dataloader, num_classes):
 
     return class_pixel_count, image_class_pixels
 
-def median_frequency_balancing(class_pixel_count, image_class_pixels):
+def median_frequency_balancing(class_pixel_count, image_class_pixels, NUM_CLASSES):
     frequencies = np.zeros(NUM_CLASSES)
     for class_id in range(NUM_CLASSES):
         image_pixels = image_class_pixels[:, class_id]
