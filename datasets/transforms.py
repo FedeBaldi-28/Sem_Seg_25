@@ -23,7 +23,6 @@ class JointTransform:
         scale = (0.8, 1.0)
         ratio = (1.3, 1.8)
         
-        # Applica con stesso seed
         seed = random.randint(0, 99999)
     
         random.seed(seed)
