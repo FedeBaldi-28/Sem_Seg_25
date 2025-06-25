@@ -1,65 +1,86 @@
-## Model initialization
-
-In the following link you can find the pretrained weights for DeepLab.
+## Real-time Domain Adaptation in Semantic Segmentation
+In this report, we address the challenges of real-time domain adaptation in semantic segmentation, with a focus on the domain shift between synthetic and real world images, evaluating how different strategies, such as architectural choices, data augmentation, loss functions and domain adaptation methods can reduce the domain gap while maintaining real-time inference capabilities.
 
 **DeepLab petrained weights**: https://drive.google.com/file/d/1ZX0UCXvJwqd2uBGCX7LI2n-DfMg3t74v/view?usp=sharing
 
-
 ## Datasets
-
-To download the dataset use the following download links.
 
 **Cityscapes**: https://drive.google.com/file/d/1Qb4UrNsjvlU-wEsR9d7rckB0YS_LXgb2/view?usp=sharing
 
 **GTA5**: https://drive.google.com/file/d/1xYxlcMR2WFCpayNrW2-Rb7N-950vvl23/view?usp=sharing
 
-## GTA5: label color mapping
+## utils
+utils.py: Contains helper functions to compute: learning rate scheduler, pixel frequency calculator, mIoU computation.
 
-Plese refer to this link to convert GTA5 labels in the same format of Cityscapes: https://github.com/sarrrrry/PyTorchDL_GTA5/blob/master/pytorchdl_gta5/labels.py
+## Step 2 – Supervised Training on Cityscapes
+**Train DeepLabV2:**
 
-## FLOPs and parameters
+- Without class weights: train_2a_no_weight.py
 
-First install fvcore with this command:
-```bash
-!pip install -U fvcore
-```
+- With class weights: train_2a_weight.py
 
-To calculate the FLOPs and number of parameters please use this code:
-```python
-from fvcore.nn import FlopCountAnalysis, flop_count_table
+**Train BiSeNet:**
+- Without class weights: train_2b_no_weight.py
 
-# -----------------------------
-# Initizialize your model here
-# -----------------------------
+- With class weights: train_2b_weight.py
 
-height = ...
-width = ...
-image = torch.zeros((3, height, width))
+**Evaluate models:**
+Use evaluation.py on Cityscapes validation set.
 
-flops = FlopCountAnalysis(model, image)
-print(flop_count_table(flops))
-```
-Reference: https://github.com/facebookresearch/fvcore/blob/main/docs/flop_count.md
+## Step 3 – Domain Shift Evaluation
 
-## Latency and FPS
+Before training convert_gta5_mask.py converts RGB segmentation masks to class IDs using labels.py.
 
-Please refer to this pseudo-code for latency and FPS calculation.
+**Train BiSeNet on GTA5 and test on Cityscapes:**
+No augmentation: 
 
-> $\texttt{image} \gets \texttt{random(3, height, width)}$\
-$\texttt{iterations} \gets 1000$\
-$\texttt{latency} \gets \texttt{[]}$\
-$\texttt{FPS} \gets \texttt{[]}$ \
-repeat $\texttt{iterations}$ times \
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{start = time.time()}$\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{output = model(image)}$\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{end = time.time()}$\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{latency}_i \texttt{ = end - start} $\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{latency.append(latency}_i \texttt{}) $\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{FPS}_i = \frac{\texttt{1}}{\texttt{latency}_i}$\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{FPS.append(FPS}_i \texttt{})$    
-end      
-> $\texttt{meanLatency}  \gets \texttt{mean(latency)*1000}$\
-$\texttt{stdLatency} \gets \texttt{std(latency)*1000}$\
-$\texttt{meanFPS} \gets \texttt{mean(FPS)}$\
-$\texttt{stdFPS} \gets \texttt{std(FPS)}$
-"# Sem_Seg_25" 
+- train_3a.py
+
+With augmentations:
+
+- Flip only: train_3b_flip.py
+
+- Color jitter: train_3b_jitter.py
+
+- Jitter + flip: train_3b_jitter_flip.py
+
+- Jitter + flip + crop: train_3b_jitter_flip_crop.py
+
+Use evaluation.py on Cityscapes validation set.
+
+## Step 4 – Domain Adaptation
+
+Adversarial domain adaptation: train_4.py
+
+The discriminator was implemented in discriminator.py
+
+Use evaluation.py on Cityscapes validation set.
+
+## Step 5 – Loss Extensions
+Experiments with advanced loss functions for rare class emphasis.
+losses.py contains the definition of Focal loss, Dice loss and their combination.
+
+**Focal loss:**
+
+- Weighted: train_5_focal_weighted.py
+
+- Not weighted: train_5_focal_no_weighted.py
+
+**Dice loss:**
+
+- Weighted: train_5_dice_weighted.py
+
+- Not weighted: train_5_dice_no_weighted.py
+
+**Combo loss (Focal + Dice):**
+
+- α = 0.7: train_5_combo_focal_03_dice_07.py
+
+- α = 0.5: train_5_combo_focal_05_dice_05.py
+
+- α = 0.3: train_5_combo_focal_07_dice_03.py
+
+
+
+
+
