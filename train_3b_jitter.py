@@ -182,7 +182,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
 
     with torch.no_grad():
         for inputs, targets in tqdm(val_loader):
-            cx1 = cx2 = None    # Per stare sicuri
+            cx1 = cx2 = None
             inputs = inputs.to(device)
             targets = targets.to(device).squeeze(1).long()
 
