@@ -123,7 +123,6 @@ def visualize_image_gt_pred(model, val_loader, model_name, device):
                 outputs = outputs[0]
             preds = torch.argmax(outputs, dim=1).squeeze(1).cpu().numpy()
 
-            # Rimuove normalizzazione per visualizzare
             input_img = inputs[0].cpu().numpy().transpose(1, 2, 0)
             input_img = (input_img * np.array([0.229, 0.224, 0.225]) +
                          np.array([0.485, 0.456, 0.406])).clip(0, 1)
