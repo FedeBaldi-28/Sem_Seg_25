@@ -15,7 +15,7 @@ from utils import fast_hist, per_class_iou, poly_lr_scheduler, compute_pixel_fre
 import math
 import random
 from datasets.transforms import JointTransform
-from torch.utils.data import random_split
+from torch.utils.data import Subset
 from torch.cuda import amp
 from models.discriminator import FCDiscriminator
 from itertools import cycle
