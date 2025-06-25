@@ -86,7 +86,7 @@ model = model.to(DEVICE)
 #################### LOSS & OPTIMIZER ####################
 criterion = nn.CrossEntropyLoss(weight=weights_tensor, ignore_index=255)
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
-scaler = amp.GradScaler()
+scaler = GradScaler()
 
 
 #################### TRAINING ####################
@@ -104,7 +104,7 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
 
         optimizer.zero_grad()
 
-        with amp.autocast():
+        with autocast():
             outputs = model(inputs)
             if isinstance(outputs, tuple):
                 outputs = outputs[0]
@@ -148,7 +148,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
             inputs = inputs.to(device)
             targets = targets.to(device).squeeze(1).long()
             
-            with amp.autocast():
+            with autocast():
                 outputs = model(inputs)
                 if isinstance(outputs, tuple):
                     outputs = outputs[0]
