@@ -62,7 +62,7 @@ transform_cityscapes = transforms.Compose([
 #################### DATASET ####################
 dataset_root = "/kaggle/working/punto-3/Seg_sem_25/Seg_sem_25/datasets/GTA5/GTA5"
 
-train_joint_transform = JointTransform(input_transform, target_transform, augment=True, strategy='flip-jitter')
+train_joint_transform = JointTransform(input_transform, target_transform, augment=True, strategy='jitter')
 val_joint_transform = JointTransform(input_transform, target_transform, augment=False, strategy='none')
 
 train_full = GTA5(root=dataset_root, joint_transform=train_joint_transform)
@@ -93,7 +93,7 @@ cityscapes_loader = DataLoader(target_dataset, batch_size=BATCH_SIZE, shuffle=Tr
 
 #################### COMPUTE WEIGHTS ####################
 class_pixel_count, image_class_pixels = compute_pixel_frequency(train_loader_gta, NUM_CLASSES)
-weights = median_frequency_balancing(class_pixel_count, image_class_pixels)
+weights = median_frequency_balancing(class_pixel_count, image_class_pixels, NUM_CLASSES)
 print("Class Weights (Median Frequency Balancing):")
 print(weights)
 
