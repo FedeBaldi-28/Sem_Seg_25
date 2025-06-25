@@ -9,6 +9,12 @@ In this report, we address the challenges of real-time domain adaptation in sema
 
 **GTA5**: https://drive.google.com/file/d/1xYxlcMR2WFCpayNrW2-Rb7N-950vvl23/view?usp=sharing
 
+## Prerequisites
+
+The fvcore library is required to the evaluation step. It can be installed using:
+
+" !pip install -U fvcore "
+
 ## utils
 
 utils.py contains helper functions to compute: learning rate with polynomial decay, calculation of IoU by class, conversion of the dataset masks from GTA5 from RGB to numeric IDs, calculation of balancing weights using the Median Frequency Balancing technique.
