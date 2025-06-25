@@ -69,6 +69,7 @@ print("Class Weights (Median Frequency Balancing):")
 print(weights)
 
 normalized_weights = weights / weights.sum() * len(weights)
+print(normalized_weights)
 weights_tensor = torch.tensor(normalized_weights, dtype=torch.float32).to(DEVICE)
 
 
