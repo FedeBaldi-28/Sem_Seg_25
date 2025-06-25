@@ -51,17 +51,3 @@ class GTA5(Dataset):
         label_mask = T.PILToTensor()(label_mask).long().squeeze(0)
 
         return img, label_mask
-
-class GTA5Wrapper(Dataset):
-    def __init__(self, subset, joint_transform=None):
-        self.subset = subset
-        self.joint_transform = joint_transform
-
-    def __getitem__(self, idx):
-        img, label = self.subset[idx]     # prendi immagine e label dal subset
-        if self.joint_transform is not None:
-            img, label = self.joint_transform(img, label)  # applica trasformazione
-        return img, label
-
-    def __len__(self):
-        return len(self.subset)
