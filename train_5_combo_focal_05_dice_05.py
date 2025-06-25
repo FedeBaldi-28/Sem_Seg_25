@@ -8,7 +8,7 @@ from PIL import Image
 from tqdm import tqdm
 from torch.cuda.amp import autocast, GradScaler
 import numpy as np
-from datasets.gta5 import GTA5, GTA5Wrapper
+from datasets.gta5 import GTA5
 from datasets.cityscapes import CityscapesTarget
 from models.bisenet.build_bisenet import BiSeNet
 from utils import fast_hist, per_class_iou, poly_lr_scheduler, compute_pixel_frequency, median_frequency_balancing
