@@ -209,9 +209,9 @@ if __name__ == '__main__':
         if mean_iou > best_miou:
             best_miou = mean_iou
             torch.save(model.state_dict(), 'best_model_2b_weight.pth')
-            print(f"Nuova best accuracy: {best_miou:.2f}% → model saved!")
+            print(f"New best accuracy: {best_miou:.2f}% → model saved!")
 
-        print(f"Epoch {epoch} completato! Best accuracy so far: {best_miou:.2f}%\n")
+        print(f"Epoch {epoch} completed! Best accuracy so far: {best_miou:.2f}%\n")
 
     torch.save(model.state_dict(), f'final_model_epoch_2b_weight{EPOCHS}.pth')
     print(f"Training finished: final model saved as final_model_epoch_2b_weight{EPOCHS}.pth")
