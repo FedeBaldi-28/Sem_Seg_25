@@ -62,7 +62,7 @@ val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_w
 
 
 #################### MODEL ####################
-model = get_deeplab_v2(num_classes=NUM_CLASSES, pretrain=True, pretrain_model_path='/content/drive/MyDrive/MLDL2024_project/deeplab_resnet_pretrained_imagenet.pth')
+model = get_deeplab_v2(num_classes=NUM_CLASSES, pretrain=True, pretrain_model_path='/kaggle/input/punto-3/Seg_sem_25/Seg_sem_25/deeplab_resnet_pretrained_imagenet.pth')
 
 if torch.cuda.device_count() > 1:
     print(f"Usando {torch.cuda.device_count()} GPU!")
