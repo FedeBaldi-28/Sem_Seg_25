@@ -265,7 +265,7 @@ if __name__ == '__main__':
     print("Avvio training")
     best_miou = 0.0
 
-    for epoch in range(start_epoch, EPOCHS + 1):
+    for epoch in range(1, EPOCHS + 1):
         print(f"Epoch {epoch}/{EPOCHS}")
         _, _ = train(model, train_loader_gta, optimizer, criterion, DEVICE, NUM_CLASSES, epoch)
         pixel_acc, mean_iou = validate(model, val_loader_gta, criterion, DEVICE, NUM_CLASSES, epoch)
