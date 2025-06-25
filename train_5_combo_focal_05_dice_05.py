@@ -181,7 +181,7 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
 
             total_loss = seg_loss + adv_loss
             if torch.isnan(total_loss) or torch.isinf(total_loss):
-                print("❌ Attenzione: total_loss contiene NaN o Inf! Interrompo il training.")
+                print("Attention: total_loss contains NaN or Inf! Stopping the training.")
                 exit(1)
 
         scaler.scale(total_loss).backward()
