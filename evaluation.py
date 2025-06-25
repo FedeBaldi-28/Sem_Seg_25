@@ -16,7 +16,7 @@ import csv
 import matplotlib.pyplot as plt
 
 
-#################### CONFIGURAZIONE ####################
+#################### CONFIGURATION ####################
 HEIGHT, WIDTH = 512, 1024
 NUM_CLASSES = 19
 ITERATIONS = 1000
@@ -52,7 +52,7 @@ def load_model(model_name, model_path):
         from models.bisenet.build_bisenet import BiSeNet
         model = BiSeNet(num_classes=NUM_CLASSES, context_path='resnet18')
     else:
-        raise ValueError(f"Modello '{model_name}' non supportato.")
+        raise ValueError(f"Modello '{model_name}' not supported.")
 
     state_dict = torch.load(model_path, map_location="cpu")
     model = torch.nn.DataParallel(model)
