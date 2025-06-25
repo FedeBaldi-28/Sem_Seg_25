@@ -20,7 +20,7 @@ ALPHA = 1
 NUM_CLASSES = 19
 BATCH_SIZE = 16
 EPOCHS = 50
-INIT_LR = 2.5e-2
+LEARNING_RATE = 2.5e-2
 IMG_SIZE = (512, 1024)
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -73,7 +73,7 @@ model = model.to(DEVICE)
 
 #################### LOSS & OPTIMIZER ####################
 criterion = nn.CrossEntropyLoss(ignore_index=255)
-optimizer = optim.SGD(model.parameters(), lr=INIT_LR, momentum=0.9, weight_decay=1e-4)
+optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
 scaler = amp.GradScaler()
 
 
@@ -135,7 +135,7 @@ def train(model, train_loader, optimizer, criterion, device, num_classes, epoch)
     
     print(f"[Epoch {epoch}] | [Train] Loss: {avg_loss:.4f} | Pixel Acc: {pixel_acc:.4f} | Time: {time.time() - start_time:.1f}s | Learning rate finale epoca: {current_lr:.6f}")
     
-    return avg_loss, pixel_acc, global_step
+    return avg_loss, pixel_acc
 
 
 #################### VALIDATION ####################
