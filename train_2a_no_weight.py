@@ -16,7 +16,7 @@ import math
 from torch.cuda import amp
 
 
-#################### CONFIGURAZIONE ####################
+#################### CONFIGURATION ####################
 NUM_CLASSES = 19
 BATCH_SIZE = 4
 EPOCHS = 50
@@ -175,7 +175,7 @@ def validate(model, val_loader, criterion, device, num_classes, epoch):
 
 #################### MAIN ####################
 if __name__ == '__main__':
-    print("Avvio training")
+    print("Start training")
     best_miou = 0.0
 
     for epoch in range(1, EPOCHS + 1):
@@ -190,7 +190,7 @@ if __name__ == '__main__':
             torch.save(model.state_dict(), 'best_model_2a_no_weight.pth')
             print(f"Nuova best accuracy: {best_miou:.2f}% → modello salvato!")
 
-        print(f"Epoch {epoch} completato! Best accuracy finora: {best_miou:.2f}%\n\n")
+        print(f"Epoch {epoch} completed! Best accuracy so far: {best_miou:.2f}%\n\n")
 
     torch.save(model.state_dict(), f'final_model_epoch_2a_no_weight{EPOCHS}.pth')
-    print(f"📦 Training finito: modello finale salvato come final_model_epoch_2a_no_weight{EPOCHS}.pth")
+    print(f"Training finished: final model saved as final_model_epoch_2a_no_weight{EPOCHS}.pth")
